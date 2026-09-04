@@ -1,0 +1,123 @@
+:root {
+  --bg: #0b0e14;
+  --eye-bg: #eaf6ff;
+  --pupil: #10131a;
+  --accent-listening: #33e0a1;
+  --accent-thinking: #f5a623;
+  --accent-idle: #4c8bf5;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: #cdd6e4;
+  font-family: -apple-system, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+#status-bar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  letter-spacing: 1px;
+  opacity: 0.85;
+}
+
+#status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #666;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+
+#status-bar.connected #status-dot {
+  background: var(--accent-listening);
+  box-shadow: 0 0 8px var(--accent-listening);
+}
+
+#status-bar.disconnected #status-dot {
+  background: #e74c3c;
+  box-shadow: 0 0 8px #e74c3c;
+}
+
+#face {
+  display: flex;
+  gap: 48px;
+}
+
+.eye {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  background: var(--eye-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.4s ease;
+}
+
+.pupil {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--pupil);
+  transition: all 0.4s ease;
+}
+
+/* IDLE: slow blink, calm glow */
+#face.state-idle .eye {
+  box-shadow: 0 0 16px 2px var(--accent-idle);
+  animation: blink 4s infinite;
+}
+
+/* LISTENING: dilated glowing pupils, no blink */
+#face.state-listening .eye {
+  box-shadow: 0 0 24px 4px var(--accent-listening);
+  animation: none;
+}
+#face.state-listening .pupil {
+  width: 36px;
+  height: 36px;
+  background: var(--accent-listening);
+}
+
+/* THINKING: pupils dart side to side */
+#face.state-thinking .eye {
+  box-shadow: 0 0 20px 2px var(--accent-thinking);
+  animation: none;
+}
+#face.state-thinking .pupil {
+  animation: dart 1s infinite ease-in-out;
+}
+
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  96% { transform: scaleY(0.08); }
+}
+
+@keyframes dart {
+  0%, 100% { transform: translateX(-8px); }
+  50% { transform: translateX(8px); }
+}
+
+#state-label {
+  margin-top: 32px;
+  font-size: 13px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
