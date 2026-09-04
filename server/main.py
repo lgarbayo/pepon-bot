@@ -1,23 +1,30 @@
-"""PeponBot backend — milestone 1: WebSocket link + state broadcast.
+"""PeponBot backend — WebSocket link + state broadcast + camera ingest.
 
-No AI yet. Just: FastAPI serves the phone UI, holds a Pepon state
-(IDLE / LISTENING / THINKING / SEARCHING / FOUND / CONFUSED), and
-pushes state/look_at/blink messages to every connected phone over
-a WebSocket.
+No object detection yet. Just: FastAPI serves the phone UI, holds a
+Pepon state (IDLE / LISTENING / THINKING / SEARCHING / FOUND /
+CONFUSED), pushes state/look_at/blink messages to the phone, and
+receives a live JPEG frame stream from the phone's camera over the
+same WebSocket (binary messages), tracking basic ingest metrics.
 """
 import socket
+import subprocess
+import time
+from collections import deque
 from enum import Enum
+from io import BytesIO
 from pathlib import Path
-from typing import Set
+from typing import Optional, Set
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from PIL import Image
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
+CERT_DIR = BASE_DIR / "certs"
 
 app = FastAPI(title="PeponBot")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -36,9 +43,60 @@ current_state: PeponState = PeponState.IDLE
 connections: Set[WebSocket] = set()
 
 
+class FrameStats:
+    """Rolling camera-ingest metrics (last 2s window for FPS)."""
+
+    def __init__(self, window_seconds: float = 2.0):
+        self.window_seconds = window_seconds
+        self.timestamps: deque[float] = deque()
+        self.frames_received = 0
+        self.width = 0
+        self.height = 0
+        self.last_frame_at: Optional[float] = None
+
+    def record(self, width: int, height: int) -> None:
+        now = time.time()
+        self.frames_received += 1
+        self.width = width
+        self.height = height
+        self.last_frame_at = now
+        self.timestamps.append(now)
+        cutoff = now - self.window_seconds
+        while self.timestamps and self.timestamps[0] < cutoff:
+            self.timestamps.popleft()
+
+    @property
+    def fps(self) -> float:
+        if len(self.timestamps) < 2:
+            return 0.0
+        span = self.timestamps[-1] - self.timestamps[0]
+        return round((len(self.timestamps) - 1) / span, 1) if span > 0 else 0.0
+
+    def as_dict(self) -> dict:
+        return {
+            "frames_received": self.frames_received,
+            "fps": self.fps,
+            "width": self.width,
+            "height": self.height,
+            "last_frame_at": self.last_frame_at,
+            "seconds_since_last_frame": (
+                round(time.time() - self.last_frame_at, 1) if self.last_frame_at else None
+            ),
+        }
+
+
+frame_stats = FrameStats()
+last_frame_jpeg: Optional[bytes] = None
+
+
 @app.get("/")
 async def index():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/debug")
+async def debug_page():
+    return FileResponse(STATIC_DIR / "debug.html")
 
 
 @app.websocket("/ws")
@@ -48,11 +106,38 @@ async def ws_endpoint(websocket: WebSocket):
     await websocket.send_json({"type": "state", "value": current_state.value})
     try:
         while True:
-            # Nothing consumed yet in this milestone; just keep the socket alive
-            # and detect disconnects.
-            await websocket.receive_text()
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect()
+            frame_bytes = message.get("bytes")
+            if frame_bytes is not None:
+                _ingest_frame(frame_bytes)
+            # Text messages from the phone aren't used yet.
     except WebSocketDisconnect:
         connections.discard(websocket)
+
+
+def _ingest_frame(data: bytes) -> None:
+    global last_frame_jpeg
+    try:
+        with Image.open(BytesIO(data)) as img:
+            width, height = img.size
+    except Exception:
+        return  # corrupt/partial frame, drop it
+    frame_stats.record(width, height)
+    last_frame_jpeg = data
+
+
+@app.get("/api/camera/stats")
+async def camera_stats():
+    return frame_stats.as_dict()
+
+
+@app.get("/api/camera/frame.jpg")
+async def camera_frame():
+    if last_frame_jpeg is None:
+        raise HTTPException(status_code=404, detail="no frame received yet")
+    return Response(content=last_frame_jpeg, media_type="image/jpeg")
 
 
 class StateUpdate(BaseModel):
@@ -110,7 +195,49 @@ def _lan_ip() -> str:
         s.close()
 
 
+def _ensure_self_signed_cert(lan_ip: str) -> tuple[Path, Path]:
+    """Chrome refuses getUserMedia on a non-localhost http:// origin, so the
+    phone needs to hit us over https. Generate a throw-away self-signed cert
+    on first run (regenerated if the LAN IP changes) — the phone just has to
+    accept the browser warning once."""
+    CERT_DIR.mkdir(exist_ok=True)
+    cert_path = CERT_DIR / "cert.pem"
+    key_path = CERT_DIR / "key.pem"
+    marker_path = CERT_DIR / f".{lan_ip}"
+    if cert_path.exists() and key_path.exists() and marker_path.exists():
+        return cert_path, key_path
+
+    subprocess.run(
+        [
+            "openssl", "req", "-x509", "-newkey", "rsa:2048",
+            "-sha256", "-days", "365", "-nodes",
+            "-keyout", str(key_path), "-out", str(cert_path),
+            "-subj", "/CN=peponbot",
+            "-addext", f"subjectAltName=IP:{lan_ip},IP:127.0.0.1,DNS:localhost",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    for old_marker in CERT_DIR.glob(".*"):
+        old_marker.unlink()
+    marker_path.touch()
+    return cert_path, key_path
+
+
 if __name__ == "__main__":
     ip = _lan_ip()
-    print(f"\nPeponBot running.\n  On this PC:  http://localhost:8000\n  On the LAN:  http://{ip}:8000  <- open this on the phone\n")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    cert_path, key_path = _ensure_self_signed_cert(ip)
+    print(
+        f"\nPeponBot running (self-signed HTTPS).\n"
+        f"  On this PC:  https://localhost:8000\n"
+        f"  On the LAN:  https://{ip}:8000  <- open this on the phone\n"
+        f"  Debug page:  https://{ip}:8000/debug\n"
+        f"  Your browser/phone will warn about the certificate — accept it once.\n"
+    )
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        ssl_certfile=str(cert_path),
+        ssl_keyfile=str(key_path),
+    )

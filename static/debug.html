@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PeponBot — camera debug</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 16px;
+    background: #0b0e14;
+    color: #cdd6e4;
+    font-family: -apple-system, system-ui, sans-serif;
+  }
+  h1 { font-size: 16px; letter-spacing: 1px; opacity: 0.8; margin: 0 0 16px; }
+  #frame {
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    aspect-ratio: 4 / 3;
+    object-fit: contain;
+    background: #000;
+    border-radius: 8px;
+    border: 1px solid #222;
+  }
+  #placeholder {
+    max-width: 640px;
+    aspect-ratio: 4 / 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    border-radius: 8px;
+    border: 1px solid #222;
+    opacity: 0.5;
+  }
+  table { margin-top: 16px; border-collapse: collapse; font-size: 14px; }
+  td { padding: 4px 12px 4px 0; }
+  td.label { opacity: 0.6; }
+  .stale { color: #e74c3c; font-weight: bold; }
+  .fresh { color: #33e0a1; font-weight: bold; }
+</style>
+</head>
+<body>
+  <h1>PEPONBOT — CAMERA DEBUG</h1>
+  <img id="frame" style="display:none;">
+  <div id="placeholder">waiting for first frame...</div>
+
+  <table>
+    <tr><td class="label">frames received</td><td id="stat-frames">-</td></tr>
+    <tr><td class="label">fps</td><td id="stat-fps">-</td></tr>
+    <tr><td class="label">dimensions</td><td id="stat-dims">-</td></tr>
+    <tr><td class="label">last frame</td><td id="stat-age">-</td></tr>
+  </table>
+
+  <script>
+    const img = document.getElementById('frame');
+    const placeholder = document.getElementById('placeholder');
+
+    async function refreshFrame() {
+      const res = await fetch(`/api/camera/frame.jpg?t=${Date.now()}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        img.src = URL.createObjectURL(blob);
+        img.style.display = 'block';
+        placeholder.style.display = 'none';
+      }
+    }
+
+    async function refreshStats() {
+      const res = await fetch('/api/camera/stats');
+      const s = await res.json();
+      document.getElementById('stat-frames').textContent = s.frames_received;
+      document.getElementById('stat-fps').textContent = s.fps;
+      document.getElementById('stat-dims').textContent = s.width && s.height ? `${s.width} x ${s.height}` : '-';
+      const ageEl = document.getElementById('stat-age');
+      if (s.seconds_since_last_frame === null) {
+        ageEl.textContent = 'never';
+        ageEl.className = '';
+      } else {
+        const fresh = s.seconds_since_last_frame < 1.5;
+        ageEl.textContent = `${s.seconds_since_last_frame}s ago`;
+        ageEl.className = fresh ? 'fresh' : 'stale';
+      }
+    }
+
+    setInterval(refreshFrame, 300);
+    setInterval(refreshStats, 500);
+    refreshFrame();
+    refreshStats();
+  </script>
+</body>
+</html>

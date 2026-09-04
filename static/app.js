@@ -156,3 +156,66 @@ function scheduleReconnect() {
 }
 
 connect();
+
+// ---------- Camera streaming ----------
+// Captures the phone camera and streams JPEG frames to the backend as
+// binary WebSocket messages. Low latency > image quality: modest
+// resolution/fps/quality are enough for object detection, not for a
+// photo. Requires a secure context (https or localhost) for getUserMedia.
+
+const CAMERA_WIDTH = 640;
+const CAMERA_HEIGHT = 480;
+const CAMERA_FPS = 10;
+const JPEG_QUALITY = 0.6;
+
+const captureCanvas = document.createElement('canvas');
+captureCanvas.width = CAMERA_WIDTH;
+captureCanvas.height = CAMERA_HEIGHT;
+const captureCtx = captureCanvas.getContext('2d', { willReadFrequently: true });
+let cameraVideo = null;
+let frameInFlight = false;
+
+async function startCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    console.warn('getUserMedia unavailable (needs https or localhost)');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: CAMERA_WIDTH },
+        height: { ideal: CAMERA_HEIGHT },
+        facingMode: 'environment',
+      },
+      audio: false,
+    });
+    cameraVideo = document.createElement('video');
+    cameraVideo.playsInline = true;
+    cameraVideo.muted = true;
+    cameraVideo.srcObject = stream;
+    await cameraVideo.play();
+    setInterval(sendFrame, 1000 / CAMERA_FPS);
+  } catch (err) {
+    console.error('Camera unavailable:', err);
+  }
+}
+
+function sendFrame() {
+  if (!cameraVideo || cameraVideo.readyState < 2) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (frameInFlight) return; // drop this tick if the previous frame hasn't finished encoding
+  frameInFlight = true;
+  captureCtx.drawImage(cameraVideo, 0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
+  captureCanvas.toBlob(
+    (blob) => {
+      frameInFlight = false;
+      if (blob && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(blob);
+      }
+    },
+    'image/jpeg',
+    JPEG_QUALITY
+  );
+}
+
+startCamera();
