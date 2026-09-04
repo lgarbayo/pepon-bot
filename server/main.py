@@ -1,8 +1,9 @@
 """PeponBot backend — milestone 1: WebSocket link + state broadcast.
 
 No AI yet. Just: FastAPI serves the phone UI, holds a Pepon state
-(IDLE / LISTENING / THINKING), and pushes state changes to every
-connected phone over a WebSocket.
+(IDLE / LISTENING / THINKING / SEARCHING / FOUND / CONFUSED), and
+pushes state/look_at/blink messages to every connected phone over
+a WebSocket.
 """
 import socket
 from enum import Enum
@@ -26,6 +27,9 @@ class PeponState(str, Enum):
     IDLE = "IDLE"
     LISTENING = "LISTENING"
     THINKING = "THINKING"
+    SEARCHING = "SEARCHING"
+    FOUND = "FOUND"
+    CONFUSED = "CONFUSED"
 
 
 current_state: PeponState = PeponState.IDLE
@@ -59,7 +63,7 @@ class StateUpdate(BaseModel):
 async def set_state(update: StateUpdate):
     global current_state
     current_state = update.state
-    await broadcast_state()
+    await broadcast({"type": "state", "value": current_state.value})
     return {"ok": True, "state": current_state.value}
 
 
@@ -68,11 +72,28 @@ async def get_state():
     return {"state": current_state.value}
 
 
-async def broadcast_state():
+class LookAt(BaseModel):
+    x: float  # normalized, -1 (left) .. 1 (right)
+    y: float  # normalized, -1 (up) .. 1 (down)
+
+
+@app.post("/api/look_at")
+async def look_at(target: LookAt):
+    await broadcast({"type": "look_at", "x": target.x, "y": target.y})
+    return {"ok": True}
+
+
+@app.post("/api/blink")
+async def trigger_blink():
+    await broadcast({"type": "blink"})
+    return {"ok": True}
+
+
+async def broadcast(payload: dict):
     dead = set()
     for ws in connections:
         try:
-            await ws.send_json({"type": "state", "value": current_state.value})
+            await ws.send_json(payload)
         except Exception:
             dead.add(ws)
     connections.difference_update(dead)

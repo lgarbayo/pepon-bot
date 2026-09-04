@@ -1,10 +1,8 @@
 :root {
   --bg: #0b0e14;
   --eye-bg: #eaf6ff;
-  --pupil: #10131a;
+  --pupil-bg: #14161d;
   --accent-listening: #33e0a1;
-  --accent-thinking: #f5a623;
-  --accent-idle: #4c8bf5;
 }
 
 * { box-sizing: border-box; }
@@ -54,64 +52,111 @@ html, body {
   box-shadow: 0 0 8px #e74c3c;
 }
 
+/* ---------- Face ---------- */
+
 #face {
   display: flex;
-  gap: 48px;
+  gap: 56px;
+}
+
+/* Confused: continuous head wiggle. Only rule on #face that uses transform,
+   so it never fights the per-eye state transforms below. */
+#face.state-confused {
+  animation: wiggle 0.6s ease-in-out infinite;
 }
 
 .eye {
-  width: 88px;
-  height: 88px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
   background: var(--eye-bg);
+  overflow: hidden;
+  box-shadow: 0 0 28px 4px var(--accent, #4c8bf5);
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+}
+
+/* Blink lives on its own wrapper so it can animate scaleY without
+   clobbering the per-state transform on .eye (glow/size/squint). */
+.eye-inner {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: box-shadow 0.4s ease;
+  transform-origin: center;
+}
+
+.eye-inner.blinking {
+  animation: blink-anim 220ms ease-in-out;
+}
+
+/* Gaze direction lives on its own wrapper too — driven purely by JS
+   (lookAt), independent from state-driven pupil size/color below. */
+.pupil-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.18s ease-out;
 }
 
 .pupil {
-  width: 28px;
-  height: 28px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: var(--pupil);
-  transition: all 0.4s ease;
+  background: var(--pupil-bg);
+  border: 3px solid var(--accent, #4c8bf5);
+  transition: width 0.3s ease, height 0.3s ease, border-color 0.3s ease;
 }
 
-/* IDLE: slow blink, calm glow */
-#face.state-idle .eye {
-  box-shadow: 0 0 16px 2px var(--accent-idle);
-  animation: blink 4s infinite;
+/* ---------- States ---------- */
+
+#face.state-idle { --accent: #4c8bf5; }
+#face.state-idle .eye { transform: scale(1); }
+#face.state-idle .pupil { width: 34px; height: 34px; }
+
+#face.state-listening { --accent: #33e0a1; }
+#face.state-listening .eye { transform: scale(1.06); }
+#face.state-listening .pupil { width: 44px; height: 44px; }
+
+#face.state-thinking { --accent: #f5a623; }
+#face.state-thinking .eye { transform: scale(1); }
+#face.state-thinking .pupil { width: 34px; height: 34px; }
+
+#face.state-searching { --accent: #a35bff; }
+#face.state-searching .eye { transform: scaleY(0.85); }
+#face.state-searching .pupil { width: 32px; height: 32px; }
+
+#face.state-found { --accent: #ffd23f; }
+#face.state-found .eye { transform: scale(1.1); }
+#face.state-found .pupil { width: 46px; height: 46px; }
+
+#face.state-confused { --accent: #ff5c7a; }
+#face.state-confused .eye { transform: scale(1); }
+#face.state-confused .pupil { width: 30px; height: 30px; }
+
+/* One-shot "pop" bounce when FOUND is entered. Ends at the same scale
+   (1.1) as the steady state-found rule above, so removing the class
+   after it finishes causes no visible jump. */
+#face.state-found .eye.pop {
+  animation: pop-anim 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* LISTENING: dilated glowing pupils, no blink */
-#face.state-listening .eye {
-  box-shadow: 0 0 24px 4px var(--accent-listening);
-  animation: none;
-}
-#face.state-listening .pupil {
-  width: 36px;
-  height: 36px;
-  background: var(--accent-listening);
+@keyframes blink-anim {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.05); }
 }
 
-/* THINKING: pupils dart side to side */
-#face.state-thinking .eye {
-  box-shadow: 0 0 20px 2px var(--accent-thinking);
-  animation: none;
-}
-#face.state-thinking .pupil {
-  animation: dart 1s infinite ease-in-out;
+@keyframes pop-anim {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.28); }
+  100% { transform: scale(1.1); }
 }
 
-@keyframes blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  96% { transform: scaleY(0.08); }
-}
-
-@keyframes dart {
-  0%, 100% { transform: translateX(-8px); }
-  50% { transform: translateX(8px); }
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
 }
 
 #state-label {
