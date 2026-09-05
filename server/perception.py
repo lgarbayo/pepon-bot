@@ -9,8 +9,12 @@ from typing import List
 
 from PIL import Image
 
-# Hackathon MVP: only care about these COCO classes.
-TARGET_CLASSES = {"person", "bottle", "cup", "cell phone", "laptop", "chair"}
+# No class filter — YOLOv8n's full 80-class COCO vocabulary is accepted
+# (Pepon shouldn't need a code change every time someone points it at an
+# object nobody thought to allow-list). Semantic reasoning (GemmaAgent)
+# and Spanish phrasing (world_state.OBJECT_ES) only have translations for
+# the original handful; anything else just falls back to its English
+# COCO name, which is a display/speech detail, not a detection limit.
 CONFIDENCE_THRESHOLD = 0.4
 
 
@@ -51,8 +55,6 @@ class PerceptionService:
         for result in results:
             for box in result.boxes:
                 cls_name = result.names[int(box.cls[0])]
-                if cls_name not in TARGET_CLASSES:
-                    continue
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
                 detections.append(
