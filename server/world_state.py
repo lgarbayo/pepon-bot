@@ -17,6 +17,31 @@ CENTER_BAND = 0.25  # |x| below this counts as CENTER, matching lookAt's -1..1 c
 
 FORGET_AFTER_SECONDS = 120.0  # drop an object's memory once it's this stale
 
+# Spoken-Spanish vocabulary for describe()/Agent — internal keys (object
+# class, position) stay in English/COCO form throughout the rest of the
+# system; this is purely for composing what Pepon says out loud.
+OBJECT_ES = {
+    "bottle": "la botella",
+    "laptop": "el portátil",
+    "chair": "la silla",
+    "cup": "la taza",
+    "cell phone": "el móvil",
+    "person": "la persona",
+}
+POSITION_ES_PHRASE = {
+    POSITION_LEFT: "a mi izquierda",
+    POSITION_RIGHT: "a mi derecha",
+    POSITION_CENTER: "en el centro",
+}
+
+
+def object_es(cls: str) -> str:
+    return OBJECT_ES.get(cls, cls)
+
+
+def position_es_phrase(position: str) -> str:
+    return POSITION_ES_PHRASE.get(position, "")
+
 
 def position_from_x(x: float) -> str:
     if x < -CENTER_BAND:
@@ -120,16 +145,17 @@ class WorldState:
         return self.objects.get(cls)
 
     def describe(self, cls: str) -> str:
-        """Plain-language answer to "where is the <cls>?" — simple enough
-        for the voice Agent to speak directly, no LLM needed."""
+        """Plain-language (Spanish) answer to "¿dónde está X?" — simple
+        enough for the voice Agent to speak directly, no LLM needed."""
+        name = object_es(cls)
         memory = self.objects.get(cls)
         if memory is None:
-            return f"I haven't seen a {cls} yet."
-        side = memory.position.lower()
+            return f"Todavía no he visto {name}."
+        side = position_es_phrase(memory.position)
         if memory.visible:
-            return f"I can see the {cls} right now, on my {side}."
+            return f"Ahora mismo veo {name}, {side}."
         seconds = memory.seconds_since_seen()
-        return f"I last saw the {cls} {round(seconds)}s ago, on my {side}."
+        return f"Vi {name} por última vez hace {round(seconds)} segundos, {side}."
 
     def as_dict(self) -> dict:
         return {

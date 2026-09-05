@@ -156,6 +156,7 @@ function speakText(text) {
   isTalking = false; // cancel() doesn't reliably fire onend on the interrupted utterance
 
   const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'es-ES'; // Agent's spoken responses are Spanish now
   utterance.onstart = () => { isTalking = true; };
   utterance.onend = () => { isTalking = false; };
   utterance.onerror = () => { isTalking = false; };
@@ -389,11 +390,15 @@ if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.request
 // channel, deterministic IntentParser + Agent on the backend do the
 // actual reasoning about what the words mean.
 //
-// Flow: continuously listen for the wake word "Pepon" -> send
-// {type:"wake_word"}, then treat the next recognized phrase as the
-// command -> send {type:"voice_command", text}. Also handles "Pepon,
-// <command>" said in one breath.
-
+// Flow: continuously listen for the wake word -> send {type:"wake_word"},
+// then treat the next recognized phrase as the command -> send
+// {type:"voice_command", text}. Also handles "<wake word>, <command>"
+// said in one breath.
+//
+// Demo runs in Spanish (es-ES): recognition.lang below, plus the
+// wake word back to "pepon" now that the recognizer actually has a
+// Spanish phonetic prior for it (this misfired badly under en-US —
+// see git history — but "Pepón"-like names are natural in Spanish).
 const WAKE_WORD = 'pepon';
 const COMMAND_TIMEOUT_MS = 6000; // give up waiting for a command after this long
 
@@ -425,7 +430,7 @@ function startVoiceRecognition() {
     recognition = new SpeechRecognitionImpl();
     recognition.continuous = true;
     recognition.interimResults = false;
-    recognition.lang = 'en-US';
+    recognition.lang = 'es-ES';
   } catch (err) {
     console.error('[voice] failed to construct SpeechRecognition:', err);
     sendJSONWhenReady({ type: 'voice_error', error: `construct: ${err.message}` });
@@ -534,7 +539,7 @@ function startPushToTalk() {
     const rec = new SpeechRecognitionImpl();
     rec.continuous = false;
     rec.interimResults = false;
-    rec.lang = 'en-US';
+    rec.lang = 'es-ES';
 
     rec.onresult = (event) => {
       const result = event.results[event.results.length - 1];

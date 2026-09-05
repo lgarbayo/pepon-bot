@@ -21,7 +21,7 @@ from intent import (
     INTENT_WHERE_IS,
 )
 from recorder import EpisodeRecorder
-from world_state import ObjectMemory, WorldState
+from world_state import ObjectMemory, WorldState, object_es, position_es_phrase
 
 FIND_TIMEOUT_SECONDS = 10.0  # short enough that "I can't see it" still feels live, not stuck
 
@@ -84,7 +84,11 @@ class Agent:
 
     async def _what_do_you_see(self, episode_id: Optional[str]) -> None:
         visible = [cls for cls, m in self.world_state.objects.items() if m.visible]
-        text = f"I see {', '.join(visible)}." if visible else "I don't see anything right now."
+        if visible:
+            names = ", ".join(object_es(cls) for cls in visible)
+            text = f"Veo {names}."
+        else:
+            text = "Ahora mismo no veo nada."
         await self._act(actions.speak(text), episode_id)
 
     async def _find_object(self, obj: str, episode_id: Optional[str]) -> None:
@@ -107,7 +111,7 @@ class Agent:
         # expression on the phone, so don't also go through
         # _set_expression() or the phone gets the same state twice.
         await self._act(actions.search_object(obj), episode_id)
-        await self._act(actions.speak(f"Looking for the {obj}."), episode_id)
+        await self._act(actions.speak(f"Buscando {object_es(obj)}."), episode_id)
         if episode_id:
             asyncio.create_task(self._timeout_search(obj, episode_id))
 
@@ -119,12 +123,12 @@ class Agent:
         if person and person.visible:
             await self._act(actions.look_at(person.x, person.y, target="person"), episode_id)
             return True
-        await self._act(actions.speak("I can't see you right now."), episode_id)
+        await self._act(actions.speak("Ahora mismo no te veo."), episode_id)
         return False
 
     async def _unknown(self, episode_id: Optional[str]) -> None:
         await self._set_expression("CONFUSED", episode_id)
-        await self._act(actions.speak("Sorry, I didn't understand that."), episode_id)
+        await self._act(actions.speak("Perdona, no te he entendido."), episode_id)
 
     # ---- shared helpers ----
 
@@ -134,7 +138,7 @@ class Agent:
             return  # already resolved (found) or superseded by a newer command
         self.world_state.set_active_target(None)
         await self._set_expression("IDLE", episode_id)
-        await self._act(actions.speak(f"I can't see a {obj}."), episode_id)
+        await self._act(actions.speak(f"No veo {object_es(obj)}."), episode_id)
         self._end(episode_id, "timeout", f"gave up looking for {obj} after {int(FIND_TIMEOUT_SECONDS)}s")
 
     async def _announce_found(self, obj: str, memory: ObjectMemory, episode_id: Optional[str]) -> None:
@@ -152,7 +156,8 @@ class Agent:
                 frame_jpeg=frame,
             )
         await self._act(
-            actions.speak(f"Found the {obj}, on my {memory.position.lower()}."), episode_id
+            actions.speak(f"Encontré {object_es(obj)}, {position_es_phrase(memory.position)}."),
+            episode_id,
         )
         self.world_state.set_active_target(None)
 
