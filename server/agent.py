@@ -23,7 +23,7 @@ from intent import (
 from recorder import EpisodeRecorder
 from world_state import ObjectMemory, WorldState
 
-FIND_TIMEOUT_SECONDS = 20.0
+FIND_TIMEOUT_SECONDS = 10.0  # short enough that "I can't see it" still feels live, not stuck
 
 
 class Agent:
@@ -134,6 +134,7 @@ class Agent:
             return  # already resolved (found) or superseded by a newer command
         self.world_state.set_active_target(None)
         await self._set_expression("IDLE", episode_id)
+        await self._act(actions.speak(f"I can't see a {obj}."), episode_id)
         self._end(episode_id, "timeout", f"gave up looking for {obj} after {int(FIND_TIMEOUT_SECONDS)}s")
 
     async def _announce_found(self, obj: str, memory: ObjectMemory, episode_id: Optional[str]) -> None:
