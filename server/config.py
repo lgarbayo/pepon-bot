@@ -6,6 +6,10 @@ import os
 
 GEMMA_ENABLED = os.environ.get("GEMMA_ENABLED", "true").lower() not in ("false", "0", "")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma3:4b")
+# "gemma3:4b" (Ollama's own registry) is the intended tag, but its blob
+# host (Cloudflare R2) is unreachable from this network — pulled instead
+# via Ollama's HuggingFace passthrough, which is the same weights under
+# a different tag. Switch back to "gemma3:4b" once that host is reachable.
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "hf.co/unsloth/gemma-3-4b-it-GGUF:Q4_K_M")
 GEMMA_TIMEOUT_SECONDS = float(os.environ.get("GEMMA_TIMEOUT_SECONDS", "8"))
 GEMMA_DEBUG = os.environ.get("GEMMA_DEBUG", "false").lower() not in ("false", "0", "")
