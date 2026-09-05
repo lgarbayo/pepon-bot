@@ -244,44 +244,69 @@ captureCanvas.width = CAMERA_WIDTH;
 captureCanvas.height = CAMERA_HEIGHT;
 const captureCtx = captureCanvas.getContext('2d', { willReadFrequently: true });
 let cameraVideo = null;
+let cameraStream = null;
 let frameInFlight = false;
 
-async function startCamera() {
+// 'user' = front/selfie camera (primary — lets Pepon and the person see
+// each other), 'environment' = rear camera. sendFrame's interval is
+// started once and just keeps reading from whatever cameraVideo/stream
+// switchCamera() last swapped in, so switching never stacks intervals.
+let currentFacingMode = 'user';
+
+async function startCamera(facingMode = currentFacingMode) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     console.warn('getUserMedia unavailable (needs https or localhost)');
-    return;
+    return false;
   }
   const videoBase = { width: { ideal: CAMERA_WIDTH }, height: { ideal: CAMERA_HEIGHT } };
   let stream;
   try {
-    // Forced front/selfie camera — plain facingMode:'user' is only a hint
-    // and some devices/browsers ignore it and fall back to the rear camera.
+    // Forced exact facing mode — a plain facingMode string is only a hint
+    // and some devices/browsers ignore it and fall back to the wrong camera.
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { ...videoBase, facingMode: { exact: 'user' } },
+      video: { ...videoBase, facingMode: { exact: facingMode } },
       audio: false,
     });
   } catch (err) {
-    console.warn('Exact front camera unavailable, falling back to any camera:', err);
+    console.warn(`Exact ${facingMode} camera unavailable, falling back to any camera:`, err);
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { ...videoBase, facingMode: 'user' },
+        video: { ...videoBase, facingMode },
         audio: false,
       });
     } catch (err2) {
       console.error('Camera unavailable:', err2);
-      return;
+      return false;
     }
   }
 
   try {
-    cameraVideo = document.createElement('video');
-    cameraVideo.playsInline = true;
-    cameraVideo.muted = true;
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop()); // release the previous camera first
+    }
+    cameraStream = stream;
+    currentFacingMode = facingMode;
+    if (!cameraVideo) {
+      cameraVideo = document.createElement('video');
+      cameraVideo.playsInline = true;
+      cameraVideo.muted = true;
+      setInterval(sendFrame, 1000 / CAMERA_FPS); // started once, on first successful camera
+    }
     cameraVideo.srcObject = stream;
     await cameraVideo.play();
-    setInterval(sendFrame, 1000 / CAMERA_FPS);
+    return true;
   } catch (err) {
     console.error('Camera unavailable:', err);
+    return false;
+  }
+}
+
+async function switchCamera() {
+  const next = currentFacingMode === 'user' ? 'environment' : 'user';
+  const ok = await startCamera(next);
+  if (!ok) {
+    console.warn(`Switching to ${next} camera failed, staying on ${currentFacingMode}`);
+    await startCamera(currentFacingMode); // best-effort: recover the camera we still had
   }
 }
 
@@ -304,6 +329,11 @@ function sendFrame() {
 }
 
 startCamera();
+
+const cameraSwitchBtn = document.getElementById('camera-switch-btn');
+if (cameraSwitchBtn) {
+  cameraSwitchBtn.addEventListener('click', switchCamera);
+}
 
 // ---------- Proprioception (motion sensors) ----------
 // Reads accelerometer (via DeviceMotionEvent) and orientation (via

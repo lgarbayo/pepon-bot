@@ -214,3 +214,22 @@ html, body {
   background: #1c2029;
   opacity: 1;
 }
+
+#camera-switch-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid #333;
+  background: #12141a;
+  color: #cdd6e4;
+  font-size: 18px;
+  opacity: 0.85;
+}
+
+#camera-switch-btn:active {
+  background: #1c2029;
+  opacity: 1;
+}
