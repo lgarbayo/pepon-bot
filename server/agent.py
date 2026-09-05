@@ -14,6 +14,7 @@ import asyncio
 from typing import Callable, Optional
 
 import actions
+from cognition.gemma_agent import GemmaDecision
 from intent import (
     INTENT_FIND_OBJECT,
     INTENT_LOOK_AT_ME,
@@ -65,6 +66,43 @@ class Agent:
         else:
             await self._unknown(episode_id)
             self._end(episode_id, "failure", "unrecognized command")
+
+    async def handle_semantic(self, decision: GemmaDecision, transcript: str = "") -> None:
+        """Executes a validated GemmaAgent decision, reusing the exact
+        same resolution/execution/recording paths as a deterministic
+        intent — Gemma never computes coordinates or touches actions.py
+        directly, it only chose which of these to run.
+
+        LOOK_AT and SEARCH_OBJECT both go through _find_object(): if the
+        target is already visible it looks at it (and speaks) right
+        away; if not, it starts the same SEARCHING flow deterministic
+        FIND_OBJECT uses, which stays open until check_active_target()
+        or _timeout_search() resolves it — so this method deliberately
+        does NOT end the episode in that case.
+        """
+        episode_id = None
+        if self.recorder:
+            episode_id = self.recorder.start_episode(
+                transcript, {"intent": "SEMANTIC", "gemma_action": decision.action, "target": decision.target}
+            )
+            self.recorder.record_observation(episode_id, "world_state", self.world_state.as_dict())
+            self.recorder.record_observation(episode_id, "gemma_decision", decision.model_dump())
+
+        if decision.action in ("LOOK_AT", "SEARCH_OBJECT") and decision.target:
+            await self._find_object(decision.target, episode_id)
+            return  # _find_object leaves the episode open when it has to search
+
+        if decision.action == "ANSWER_LOCATION" and decision.target:
+            await self._where_is(decision.target, episode_id)
+        elif decision.action == "DESCRIBE_SCENE":
+            await self._what_do_you_see(episode_id)
+        elif decision.action == "SPEAK" and decision.text:
+            await self._act(actions.speak(decision.text), episode_id)
+        # IDLE (or a target-needing action GemmaAgent already validated
+        # away) intentionally does nothing further — episode still ends
+        # below so it isn't left open forever.
+
+        self._end(episode_id, "success")
 
     async def check_active_target(self) -> None:
         """Called once per detection cycle (from the perception loop): if

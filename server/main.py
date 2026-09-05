@@ -48,6 +48,7 @@ import actions
 import intent
 from actions import Action, ActionType, PhoneExecutor
 from agent import Agent
+from cognition.gemma_agent import GemmaAgent
 from perception import PerceptionService
 from proprioception import MotionClassifier
 from recorder import EpisodeRecorder
@@ -257,8 +258,23 @@ async def _handle_wake_word() -> None:
 async def _handle_voice_command(text: str) -> None:
     if not text:
         return
+    await _route_voice_text(text)
+
+
+async def _route_voice_text(text: str) -> dict:
+    """Shared by the phone's WS voice_command and the /api/voice_command
+    manual-test endpoint. Deterministic intents keep working exactly as
+    before; only a command intent.parse() couldn't match at all falls
+    through to GemmaAgent's semantic reasoning."""
     parsed = intent.parse(text)
+    if parsed["intent"] == intent.INTENT_UNKNOWN and gemma_agent.enabled:
+        # Current frame, not a stream: this is a one-off per voice command,
+        # never called from the camera/detection loop.
+        decision = await gemma_agent.decide(text, world_state, frame_jpeg=last_frame_jpeg)
+        await agent.handle_semantic(decision, transcript=text)
+        return {"intent": parsed, "gemma_decision": decision.model_dump()}
     await agent.handle(parsed, transcript=text)
+    return {"intent": parsed}
 
 
 def _ingest_frame(data: bytes) -> None:
@@ -310,6 +326,15 @@ async def get_motion():
         "phase": world_state.phone_motion_phase,
         "last_event": world_state.last_motion_event,
         "last_event_at": world_state.last_motion_event_at,
+    }
+
+
+@app.get("/api/health")
+async def health():
+    return {
+        "backend": "ok",
+        "vision": "ok" if perception_service is not None else "loading",
+        "gemma": await gemma_agent.health(),
     }
 
 
@@ -365,11 +390,10 @@ class VoiceCommand(BaseModel):
 @app.post("/api/voice_command")
 async def post_voice_command(cmd: VoiceCommand):
     """Full pipeline for manual testing without needing the phone's mic:
-    text -> IntentParser -> Agent -> Action(s). Mirrors exactly what the
-    phone sends after hearing the wake word."""
-    parsed = intent.parse(cmd.text)
-    await agent.handle(parsed, transcript=cmd.text)
-    return {"intent": parsed}
+    text -> IntentParser (falling back to GemmaAgent) -> Agent ->
+    Action(s). Mirrors exactly what the phone sends after hearing the
+    wake word."""
+    return await _route_voice_text(cmd.text)
 
 
 @app.post("/api/action")
@@ -399,6 +423,12 @@ async def broadcast(payload: dict):
 action_executor = PhoneExecutor(broadcast)
 recorder = EpisodeRecorder()
 agent = Agent(world_state, action_executor, recorder=recorder, frame_provider=lambda: last_frame_jpeg)
+gemma_agent = GemmaAgent()  # semantic reasoning layer — see cognition/gemma_agent.py
+
+
+@app.on_event("shutdown")
+async def close_gemma_client():
+    await gemma_agent.aclose()
 
 
 @app.get("/api/episodes")
