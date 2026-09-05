@@ -97,6 +97,8 @@
     <tr><td class="label">last frame</td><td id="stat-age">-</td></tr>
     <tr><td class="label">pepon state</td><td id="stat-pepon-state">-</td></tr>
     <tr><td class="label">last motion event</td><td id="stat-motion">-</td></tr>
+    <tr><td class="label">last voice heard</td><td id="stat-voice-heard">-</td></tr>
+    <tr><td class="label">last voice error</td><td id="stat-voice-error">-</td></tr>
   </table>
 
   <div id="detections">no detections yet</div>
@@ -210,6 +212,19 @@
         : 'none yet';
     }
 
+    async function refreshVoiceStatus() {
+      const res = await fetch('/api/voice/status');
+      const v = await res.json();
+      document.getElementById('stat-voice-heard').textContent = v.last_heard
+        ? `"${v.last_heard.text}" (${Math.round((Date.now() / 1000) - v.last_heard.at)}s ago)`
+        : 'nothing yet';
+      const errEl = document.getElementById('stat-voice-error');
+      errEl.textContent = v.last_error
+        ? `${v.last_error.error} (${Math.round((Date.now() / 1000) - v.last_error.at)}s ago)`
+        : 'none';
+      errEl.className = v.last_error ? 'stale' : '';
+    }
+
     async function refreshWorld() {
       const res = await fetch('/api/world');
       const world = await res.json();
@@ -234,11 +249,13 @@
     setInterval(refreshStats, 500);
     setInterval(refreshDetections, 400);
     setInterval(refreshMotion, 500);
+    setInterval(refreshVoiceStatus, 500);
     setInterval(refreshWorld, 500);
     refreshFrame();
     refreshStats();
     refreshDetections();
     refreshMotion();
+    refreshVoiceStatus();
     refreshWorld();
   </script>
 </body>

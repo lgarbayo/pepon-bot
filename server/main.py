@@ -138,6 +138,8 @@ last_detections: list = []
 last_detection_at: Optional[float] = None
 person_tracker = PersonTracker()
 motion_classifier = MotionClassifier()
+last_voice_heard: Optional[dict] = None  # raw STT transcript, for live debugging
+last_voice_error: Optional[dict] = None  # SpeechRecognition error, for live debugging
 
 
 @app.on_event("startup")
@@ -208,6 +210,7 @@ async def ws_endpoint(websocket: WebSocket):
 
 
 async def _handle_text_message(text: str) -> None:
+    global last_voice_heard, last_voice_error
     try:
         payload = json.loads(text)
     except ValueError:
@@ -219,6 +222,12 @@ async def _handle_text_message(text: str) -> None:
         await _handle_wake_word()
     elif msg_type == "voice_command":
         await _handle_voice_command(payload.get("text", ""))
+    elif msg_type == "voice_heard":
+        # Raw STT output before wake-word filtering — lets us see on
+        # /debug what the phone actually heard, without USB debugging.
+        last_voice_heard = {"text": payload.get("text"), "at": time.time()}
+    elif msg_type == "voice_error":
+        last_voice_error = {"error": payload.get("error"), "at": time.time()}
 
 
 async def _handle_motion(payload: dict) -> None:
@@ -302,6 +311,14 @@ async def get_motion():
         "last_event": world_state.last_motion_event,
         "last_event_at": world_state.last_motion_event_at,
     }
+
+
+@app.get("/api/voice/status")
+async def get_voice_status():
+    """Live diagnostics for the phone's speech recognition, so problems
+    (mishearing the wake word, permission/network errors) are visible
+    on /debug without tethering the phone for USB devtools."""
+    return {"last_heard": last_voice_heard, "last_error": last_voice_error}
 
 
 @app.get("/api/world")

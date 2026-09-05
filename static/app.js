@@ -402,26 +402,49 @@ let awaitingWakeWord = true;
 let commandTimeout = null;
 let voiceEnabled = true; // flipped off if mic permission is denied
 
+// Fires once at startup, when the WebSocket may not be open yet — unlike
+// sendJSON's fire-and-forget, this retries so a startup-time diagnostic
+// (e.g. "SpeechRecognition unsupported") doesn't get silently dropped.
+function sendJSONWhenReady(obj, retriesLeft = 10) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  } else if (retriesLeft > 0) {
+    setTimeout(() => sendJSONWhenReady(obj, retriesLeft - 1), 300);
+  }
+}
+
 function startVoiceRecognition() {
   const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognitionImpl) {
     console.warn('SpeechRecognition unsupported on this browser');
+    sendJSONWhenReady({ type: 'voice_error', error: 'unsupported' });
     return;
   }
 
-  recognition = new SpeechRecognitionImpl();
-  recognition.continuous = true;
-  recognition.interimResults = false;
-  recognition.lang = 'en-US';
+  try {
+    recognition = new SpeechRecognitionImpl();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+  } catch (err) {
+    console.error('[voice] failed to construct SpeechRecognition:', err);
+    sendJSONWhenReady({ type: 'voice_error', error: `construct: ${err.message}` });
+    return;
+  }
 
   recognition.onresult = (event) => {
     const result = event.results[event.results.length - 1];
     if (result.isFinal) {
-      handleTranscript(result[0].transcript);
+      const transcript = result[0].transcript;
+      console.log('[voice] heard:', transcript);
+      sendJSON({ type: 'voice_heard', text: transcript }); // raw STT output, for /debug
+      handleTranscript(transcript);
     }
   };
 
   recognition.onerror = (event) => {
+    console.warn('[voice] recognition error:', event.error);
+    sendJSON({ type: 'voice_error', error: event.error }); // surfaced on /debug too
     if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
       console.warn('Microphone permission denied for voice commands');
       voiceEnabled = false;
@@ -434,11 +457,22 @@ function startVoiceRecognition() {
     // Chrome stops the recognizer periodically even in continuous mode —
     // keep it alive for as long as we're allowed to listen.
     if (voiceEnabled) {
-      setTimeout(() => recognition.start(), 250);
+      setTimeout(safeStartRecognition, 250);
     }
   };
 
-  recognition.start();
+  safeStartRecognition();
+}
+
+function safeStartRecognition() {
+  try {
+    recognition.start();
+  } catch (err) {
+    // e.g. InvalidStateError if a start/stop raced with the restart timer —
+    // report it instead of silently going quiet forever.
+    console.error('[voice] recognition.start() failed:', err);
+    sendJSON({ type: 'voice_error', error: `start: ${err.message}` });
+  }
 }
 
 function handleTranscript(rawText) {
