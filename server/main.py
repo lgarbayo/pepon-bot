@@ -7,6 +7,8 @@ messages to the phone, receives a live JPEG frame stream from the
 phone's camera over the same WebSocket (binary messages), and
 periodically runs object detection on the latest frame via
 PerceptionService — broadcasting detections back over the WebSocket.
+A PersonTracker turns those detections into a smoothed look_at
+target so the eyes follow a person without jitter or target-hopping.
 """
 import asyncio
 import socket
@@ -26,6 +28,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from perception import PerceptionService
+from tracking import PersonTracker
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -96,10 +99,11 @@ last_frame_jpeg: Optional[bytes] = None
 # Detection runs on a timer against whatever the latest frame is, not on
 # every incoming frame — a nano model is fast, but there's no reason to
 # burn CPU re-detecting frames the phone barely moved between.
-DETECTION_INTERVAL_SECONDS = 0.4
+DETECTION_INTERVAL_SECONDS = 0.25
 perception_service: Optional[PerceptionService] = None
 last_detections: list = []
 last_detection_at: Optional[float] = None
+person_tracker = PersonTracker()
 
 
 @app.on_event("startup")
@@ -125,6 +129,10 @@ async def _detection_loop():
         last_detections = [d.as_dict() for d in detections]
         last_detection_at = time.time()
         await broadcast({"type": "detections", "objects": last_detections})
+
+        gaze = person_tracker.update(last_detections)
+        if gaze is not None:
+            await broadcast({"type": "look_at", "x": round(gaze[0], 3), "y": round(gaze[1], 3)})
 
 
 @app.get("/")
