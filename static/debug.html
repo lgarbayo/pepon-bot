@@ -66,6 +66,8 @@
     <tr><td class="label">fps</td><td id="stat-fps">-</td></tr>
     <tr><td class="label">dimensions</td><td id="stat-dims">-</td></tr>
     <tr><td class="label">last frame</td><td id="stat-age">-</td></tr>
+    <tr><td class="label">pepon state</td><td id="stat-pepon-state">-</td></tr>
+    <tr><td class="label">last motion event</td><td id="stat-motion">-</td></tr>
   </table>
 
   <div id="detections">no detections yet</div>
@@ -156,12 +158,27 @@
       }
     }
 
+    async function refreshMotion() {
+      const [stateRes, motionRes] = await Promise.all([
+        fetch('/api/state'),
+        fetch('/api/motion'),
+      ]);
+      const state = await stateRes.json();
+      const motion = await motionRes.json();
+      document.getElementById('stat-pepon-state').textContent = state.state;
+      document.getElementById('stat-motion').textContent = motion.last_event
+        ? `${motion.last_event} (${Math.round((Date.now() / 1000) - motion.last_event_at)}s ago)`
+        : 'none yet';
+    }
+
     setInterval(refreshFrame, 300);
     setInterval(refreshStats, 500);
     setInterval(refreshDetections, 400);
+    setInterval(refreshMotion, 500);
     refreshFrame();
     refreshStats();
     refreshDetections();
+    refreshMotion();
   </script>
 </body>
 </html>

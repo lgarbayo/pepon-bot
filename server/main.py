@@ -9,8 +9,12 @@ periodically runs object detection on the latest frame via
 PerceptionService — broadcasting detections back over the WebSocket.
 A PersonTracker turns those detections into a smoothed look_at
 target so the eyes follow a person without jitter or target-hopping.
+A MotionClassifier reads accelerometer/orientation samples pushed by
+the phone (text WebSocket messages) and reacts to PHONE_SHAKEN /
+PHONE_PICKED_UP / PHONE_STABLE with a state change.
 """
 import asyncio
+import json
 import socket
 import subprocess
 import time
@@ -28,6 +32,7 @@ from PIL import Image
 from pydantic import BaseModel
 
 from perception import PerceptionService
+from proprioception import MotionClassifier
 from tracking import PersonTracker
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -45,6 +50,7 @@ class PeponState(str, Enum):
     SEARCHING = "SEARCHING"
     FOUND = "FOUND"
     CONFUSED = "CONFUSED"
+    SURPRISED = "SURPRISED"
 
 
 current_state: PeponState = PeponState.IDLE
@@ -104,6 +110,9 @@ perception_service: Optional[PerceptionService] = None
 last_detections: list = []
 last_detection_at: Optional[float] = None
 person_tracker = PersonTracker()
+motion_classifier = MotionClassifier()
+last_motion_event: Optional[str] = None
+last_motion_event_at: Optional[float] = None
 
 
 @app.on_event("startup")
@@ -158,9 +167,46 @@ async def ws_endpoint(websocket: WebSocket):
             frame_bytes = message.get("bytes")
             if frame_bytes is not None:
                 _ingest_frame(frame_bytes)
-            # Text messages from the phone aren't used yet.
+                continue
+            text = message.get("text")
+            if text is not None:
+                await _handle_text_message(text)
     except WebSocketDisconnect:
         connections.discard(websocket)
+
+
+async def _handle_text_message(text: str) -> None:
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        return
+    if payload.get("type") == "motion":
+        await _handle_motion(payload)
+
+
+async def _handle_motion(payload: dict) -> None:
+    global current_state, last_motion_event, last_motion_event_at
+    event = motion_classifier.update(payload.get("accel_gravity"), payload.get("orientation"))
+    if event is None:
+        return
+    last_motion_event = event
+    last_motion_event_at = time.time()
+    await broadcast({"type": "motion_event", "event": event})
+
+    if event == "PHONE_SHAKEN":
+        current_state = PeponState.CONFUSED
+        await broadcast({"type": "state", "value": current_state.value})
+        await broadcast({"type": "dizzy"})
+    elif event == "PHONE_PICKED_UP":
+        current_state = PeponState.SURPRISED
+        await broadcast({"type": "state", "value": current_state.value})
+    elif event == "PHONE_STABLE" and current_state in (PeponState.CONFUSED, PeponState.SURPRISED):
+        # Only clear reactions we caused ourselves — don't stomp on a state
+        # a future voice Agent might have set (e.g. LISTENING).
+        current_state = PeponState.IDLE
+        await broadcast({"type": "state", "value": current_state.value})
+    # PHONE_TILTED: informational only for v0.1 — a phone tilts constantly
+    # while just being held, so we don't force a face reaction on it here.
 
 
 def _ingest_frame(data: bytes) -> None:
@@ -206,6 +252,11 @@ async def set_state(update: StateUpdate):
 @app.get("/api/state")
 async def get_state():
     return {"state": current_state.value}
+
+
+@app.get("/api/motion")
+async def get_motion():
+    return {"last_event": last_motion_event, "last_event_at": last_motion_event_at}
 
 
 class LookAt(BaseModel):

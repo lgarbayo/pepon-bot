@@ -90,6 +90,21 @@ html, body {
   animation: blink-anim 220ms ease-in-out;
 }
 
+/* Dizzy wobble lives on its own wrapper too, so a shake reaction can
+   spin the eyes without touching blink (scaleY) or gaze (translate). */
+.dizzy-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+}
+
+.dizzy-wrap.dizzy {
+  animation: dizzy-anim 700ms ease-in-out;
+}
+
 /* Gaze direction lives on its own wrapper too — driven purely by JS
    (lookAt), independent from state-driven pupil size/color below. */
 .pupil-wrap {
@@ -128,18 +143,22 @@ html, body {
 #face.state-searching .eye { transform: scaleY(0.85); }
 #face.state-searching .pupil { width: 32px; height: 32px; }
 
-#face.state-found { --accent: #ffd23f; }
-#face.state-found .eye { transform: scale(1.1); }
+#face.state-found { --accent: #ffd23f; --pop-scale: 1.1; }
+#face.state-found .eye { transform: scale(var(--pop-scale)); }
 #face.state-found .pupil { width: 46px; height: 46px; }
 
 #face.state-confused { --accent: #ff5c7a; }
 #face.state-confused .eye { transform: scale(1); }
 #face.state-confused .pupil { width: 30px; height: 30px; }
 
-/* One-shot "pop" bounce when FOUND is entered. Ends at the same scale
-   (1.1) as the steady state-found rule above, so removing the class
-   after it finishes causes no visible jump. */
-#face.state-found .eye.pop {
+#face.state-surprised { --accent: #7ff0ff; --pop-scale: 1.18; }
+#face.state-surprised .eye { transform: scale(var(--pop-scale)); }
+#face.state-surprised .pupil { width: 24px; height: 24px; }
+
+/* One-shot "pop" bounce when a state wants a startled entrance (FOUND,
+   SURPRISED). Ends at that state's own --pop-scale, so removing the
+   class after it finishes causes no visible jump. */
+.eye.pop {
   animation: pop-anim 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -150,13 +169,22 @@ html, body {
 
 @keyframes pop-anim {
   0% { transform: scale(1); }
-  40% { transform: scale(1.28); }
-  100% { transform: scale(1.1); }
+  40% { transform: scale(calc(var(--pop-scale, 1.1) * 1.15)); }
+  100% { transform: scale(var(--pop-scale, 1.1)); }
 }
 
 @keyframes wiggle {
   0%, 100% { transform: rotate(-3deg); }
   50% { transform: rotate(3deg); }
+}
+
+/* Quick disoriented spin, layered on top of the CONFUSED wiggle. */
+@keyframes dizzy-anim {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(100deg); }
+  50% { transform: rotate(200deg); }
+  75% { transform: rotate(280deg); }
+  100% { transform: rotate(360deg); }
 }
 
 #state-label {

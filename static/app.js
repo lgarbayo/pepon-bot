@@ -2,17 +2,22 @@
 // Frontend API: Pepon.setState(name), Pepon.lookAt(x, y), Pepon.blink()
 // x/y are normalized to [-1, 1] (left/up = -1, right/down = 1).
 
-const VALID_STATES = ['idle', 'listening', 'thinking', 'searching', 'found', 'confused'];
+const VALID_STATES = ['idle', 'listening', 'thinking', 'searching', 'found', 'confused', 'surprised'];
+const POP_STATES = ['found', 'surprised']; // states with a one-shot startled entrance
 const MAX_GAZE_OFFSET_PX = 30; // how far pupils can travel from eye center
 
 const face = document.getElementById('face');
 const stateLabel = document.getElementById('state-label');
 const eyes = [document.getElementById('eye-left'), document.getElementById('eye-right')];
 const eyeInners = eyes.map((eye) => eye.querySelector('.eye-inner'));
+const dizzyWraps = eyes.map((eye) => eye.querySelector('.dizzy-wrap'));
 const pupilWraps = eyes.map((eye) => eye.querySelector('.pupil-wrap'));
 
 eyeInners.forEach((el) => {
   el.addEventListener('animationend', () => el.classList.remove('blinking'));
+});
+dizzyWraps.forEach((el) => {
+  el.addEventListener('animationend', () => el.classList.remove('dizzy'));
 });
 eyes.forEach((eye) => {
   eye.addEventListener('animationend', () => eye.classList.remove('pop'));
@@ -50,7 +55,7 @@ function setState(name) {
   face.className = `state-${state}`;
   stateLabel.textContent = state.toUpperCase();
 
-  if (state === 'found') {
+  if (POP_STATES.includes(state)) {
     eyes.forEach((eye) => {
       eye.classList.remove('pop');
       void eye.offsetWidth; // restart animation even if triggered twice quickly
@@ -72,6 +77,14 @@ function blink() {
   });
   lastBlinkAt = performance.now();
   nextBlinkDelay = randomBlinkDelay();
+}
+
+function dizzy() {
+  dizzyWraps.forEach((el) => {
+    el.classList.remove('dizzy');
+    void el.offsetWidth; // restart animation even if triggered twice quickly
+    el.classList.add('dizzy');
+  });
 }
 
 // Automatic idle motion per state (only runs while no explicit lookAt()
@@ -102,7 +115,7 @@ function tick(timestamp) {
 }
 requestAnimationFrame(tick);
 
-window.Pepon = { setState, lookAt, blink };
+window.Pepon = { setState, lookAt, blink, dizzy };
 
 // ---------- WebSocket link ----------
 
@@ -137,6 +150,12 @@ function connect() {
         break;
       case 'detections':
         console.log('[detections]', msg.objects);
+        break;
+      case 'dizzy':
+        Pepon.dizzy();
+        break;
+      case 'motion_event':
+        console.log('[motion]', msg.event);
         break;
     }
   };
@@ -222,3 +241,84 @@ function sendFrame() {
 }
 
 startCamera();
+
+// ---------- Proprioception (motion sensors) ----------
+// Reads accelerometer (via DeviceMotionEvent) and orientation (via
+// DeviceOrientationEvent) and forwards raw samples to the backend as
+// JSON WebSocket text messages, throttled well below their native
+// firing rate. The backend turns these into PHONE_* events — this
+// side just degrades gracefully when a sensor/permission is missing.
+
+const MOTION_SEND_INTERVAL_MS = 100; // ~10Hz: plenty for threshold detection
+
+let latestAccelGravity = null; // {x,y,z} m/s^2, includes gravity — broadly supported
+let latestOrientation = null; // {alpha,beta,gamma} degrees
+
+function handleDeviceMotion(event) {
+  const g = event.accelerationIncludingGravity;
+  if (g && g.x !== null && g.y !== null && g.z !== null) {
+    latestAccelGravity = { x: g.x, y: g.y, z: g.z };
+  }
+}
+
+function handleDeviceOrientation(event) {
+  if (event.beta !== null && event.gamma !== null) {
+    latestOrientation = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
+  }
+}
+
+async function startMotionSensors() {
+  // iOS 13+ Safari requires an explicit user-gesture permission prompt;
+  // Android Chrome exposes no such API and just needs a secure context.
+  const needsIOSPermission =
+    typeof DeviceMotionEvent !== 'undefined' &&
+    typeof DeviceMotionEvent.requestPermission === 'function';
+
+  if (needsIOSPermission) {
+    try {
+      const result = await DeviceMotionEvent.requestPermission();
+      if (result !== 'granted') {
+        console.warn('Motion sensor permission denied');
+        return;
+      }
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        await DeviceOrientationEvent.requestPermission();
+      }
+    } catch (err) {
+      console.warn('Motion sensor permission request failed:', err);
+      return;
+    }
+  }
+
+  if (typeof DeviceMotionEvent !== 'undefined') {
+    window.addEventListener('devicemotion', handleDeviceMotion);
+  } else {
+    console.warn('DeviceMotionEvent unsupported on this browser');
+  }
+
+  if (typeof DeviceOrientationEvent !== 'undefined') {
+    window.addEventListener('deviceorientation', handleDeviceOrientation);
+  } else {
+    console.warn('DeviceOrientationEvent unsupported on this browser');
+  }
+
+  setInterval(sendMotionSample, MOTION_SEND_INTERVAL_MS);
+}
+
+function sendMotionSample() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (!latestAccelGravity && !latestOrientation) return; // nothing to report yet
+  ws.send(JSON.stringify({
+    type: 'motion',
+    accel_gravity: latestAccelGravity,
+    orientation: latestOrientation,
+  }));
+}
+
+// iOS needs this triggered from a user gesture; a tap anywhere on the
+// page satisfies that without adding a dedicated permission button.
+if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+  document.body.addEventListener('click', startMotionSensors, { once: true });
+} else {
+  startMotionSensors();
+}
