@@ -96,8 +96,12 @@ class Agent:
             await self._where_is(decision.target, episode_id)
         elif decision.action == "DESCRIBE_SCENE":
             await self._what_do_you_see(episode_id)
-        elif decision.action == "SPEAK" and decision.text:
-            await self._act(actions.speak(decision.text), episode_id)
+        elif decision.action == "SPEAK":
+            # Gemma is asked to always set text for SPEAK, but if it
+            # didn't, silently doing nothing would leave the person who
+            # just spoke to Pepon with zero feedback at all — worse than
+            # a generic reply.
+            await self._act(actions.speak(decision.text or "No sé qué decir a eso."), episode_id)
         # IDLE (or a target-needing action GemmaAgent already validated
         # away) intentionally does nothing further — episode still ends
         # below so it isn't left open forever.

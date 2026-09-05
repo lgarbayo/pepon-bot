@@ -168,7 +168,7 @@ class GemmaAgent:
         if decision is None:
             print(f"[GEMMA] validation=FAILED ({error}) -> fallback")
             return GemmaDecision(action="SPEAK", text="No he entendido bien eso.")
-        print(f"[GEMMA] action={decision.action} target={decision.target} validation=OK")
+        print(f"[GEMMA] action={decision.action} target={decision.target} text={decision.text!r} validation=OK")
         return decision
 
     async def _ask(
