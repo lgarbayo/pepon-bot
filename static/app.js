@@ -28,6 +28,13 @@ let manualGaze = null; // set by an explicit lookAt() call; overrides auto motio
 let lastBlinkAt = 0;
 let nextBlinkDelay = randomBlinkDelay();
 
+// Driven by speakText() below. Deliberately NOT a Pepon.setState() —
+// talking is an overlay on top of whatever expression is already active
+// (e.g. still looking at a just-found bottle while announcing it), not a
+// state swap, so it must never touch currentState/manualGaze/face.className.
+let isTalking = false;
+let wasTalking = false;
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -111,6 +118,18 @@ function tick(timestamp) {
     blink();
   }
 
+  // Talking indicator: a gentle brightness pulse driven straight via
+  // inline style (not a CSS class/keyframe), so it can never collide
+  // with the per-state `animation`/`transform` rules on these same
+  // elements (e.g. CONFUSED's wiggle, FOUND's pop) — see isTalking above.
+  if (isTalking) {
+    const pulse = 1 + Math.sin(timestamp / 90) * 0.25;
+    eyes.forEach((eye) => { eye.style.filter = `brightness(${pulse})`; });
+  } else if (wasTalking) {
+    eyes.forEach((eye) => { eye.style.filter = ''; });
+  }
+  wasTalking = isTalking;
+
   requestAnimationFrame(tick);
 }
 requestAnimationFrame(tick);
@@ -126,11 +145,21 @@ let ws;
 let reconnectDelay = 1000;
 
 // SPEAK action rendering — plain Web Speech API TTS, no server-side
-// speech synthesis needed.
+// speech synthesis needed. The backend decided WHAT to say; everything
+// here is purely HOW: pick a voice engine and show a "talking" cue
+// while it plays, on top of whatever expression is already showing
+// (e.g. Pepon stays looking at a just-found bottle while announcing
+// it — see the isTalking comment above tick()).
 function speakText(text) {
   if (!('speechSynthesis' in window) || !text) return;
   speechSynthesis.cancel(); // don't queue behind a stale utterance
-  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  isTalking = false; // cancel() doesn't reliably fire onend on the interrupted utterance
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.onstart = () => { isTalking = true; };
+  utterance.onend = () => { isTalking = false; };
+  utterance.onerror = () => { isTalking = false; };
+  speechSynthesis.speak(utterance);
 }
 
 function sendJSON(obj) {

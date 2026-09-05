@@ -83,8 +83,12 @@ class Agent:
     # ---- shared helpers ----
 
     async def _announce_found(self, obj: str, memory: ObjectMemory) -> None:
-        await self.action_executor.execute(actions.look_at(memory.x, memory.y, target=obj))
+        # SET_EXPRESSION before LOOK_AT: on the phone, a state change resets
+        # gaze to that state's default (Pepon.setState() clears manualGaze),
+        # so sending LOOK_AT second is what makes the eyes actually end up
+        # on the object instead of snapping back to center right after.
         await self._set_expression("FOUND")
+        await self.action_executor.execute(actions.look_at(memory.x, memory.y, target=obj))
         await self.action_executor.execute(
             actions.speak(f"Found the {obj}, on my {memory.position.lower()}.")
         )
