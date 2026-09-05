@@ -4,3 +4,10 @@ Pillow>=10.0  # decode incoming JPEG frames to read width/height for camera stat
 ultralytics>=8.3  # YOLOv8n object detection (pulls torch; auto-downloads weights on first run)
 httpx>=0.27  # GemmaAgent -> local Ollama HTTP API
 faster-whisper>=1.0  # SpeechService -> local STT (push-to-talk, any browser)
+# faster-whisper's CUDA path needs libcublas.so.12/libcudnn specifically (CUDA 12
+# ABI) and ctranslate2 doesn't declare them as a dependency — without these,
+# WhisperModel(device="cuda") loads fine but crashes on first transcribe() with
+# "Library libcublas.so.12 is not found or cannot be loaded", especially on a
+# machine whose other CUDA packages are already on the 13.x line.
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
