@@ -125,6 +125,14 @@ const statusText = document.getElementById('status-text');
 let ws;
 let reconnectDelay = 1000;
 
+// SPEAK action rendering — plain Web Speech API TTS, no server-side
+// speech synthesis needed.
+function speakText(text) {
+  if (!('speechSynthesis' in window) || !text) return;
+  speechSynthesis.cancel(); // don't queue behind a stale utterance
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -156,6 +164,12 @@ function connect() {
         break;
       case 'motion_event':
         console.log('[motion]', msg.event);
+        break;
+      case 'speak':
+        speakText(msg.text);
+        break;
+      case 'alert':
+        console.warn('[ALERT]', msg.reason);
         break;
     }
   };

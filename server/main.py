@@ -14,7 +14,11 @@ the phone (text WebSocket messages) and reacts to PHONE_SHAKEN /
 PHONE_PICKED_UP / PHONE_STABLE with a state change. A WorldState
 keeps the small amount of short-term memory (visible objects, last
 known positions, Pepon's own state, phone motion) that ties all of
-the above together for a future voice Agent to read.
+the above together for a future voice Agent to read. Anything Pepon
+*does* (look somewhere, speak, change expression, ...) is expressed
+as an Action and carried out by an ActionExecutor — today PhoneExecutor,
+rendering over this same WebSocket; a future hardware executor would
+plug in without changing any of the code that produces actions.
 """
 import asyncio
 import json
@@ -25,7 +29,7 @@ from collections import deque
 from enum import Enum
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Set
+from typing import Any, Dict, Optional, Set
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
@@ -34,6 +38,8 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
 
+import actions
+from actions import Action, ActionType, PhoneExecutor
 from perception import PerceptionService
 from proprioception import MotionClassifier
 from tracking import PersonTracker
@@ -64,12 +70,12 @@ world_state = WorldState()
 
 async def _set_pepon_state(new_state: PeponState) -> None:
     """Single choke point for changing Pepon's state: keeps world_state
-    in sync and broadcasts to the phone, so callers can't update one
-    without the other."""
+    in sync and renders it as a SET_EXPRESSION action, so callers can't
+    update one without the other."""
     global current_state
     current_state = new_state
     world_state.set_pepon_state(current_state.value)
-    await broadcast({"type": "state", "value": current_state.value})
+    await action_executor.execute(actions.set_expression(current_state.value))
 
 
 class FrameStats:
@@ -155,7 +161,7 @@ async def _detection_loop():
 
         gaze = person_tracker.update(last_detections)
         if gaze is not None:
-            await broadcast({"type": "look_at", "x": round(gaze[0], 3), "y": round(gaze[1], 3)})
+            await action_executor.execute(actions.look_at(gaze[0], gaze[1], target="person"))
 
 
 @app.get("/")
@@ -287,13 +293,30 @@ class LookAt(BaseModel):
 
 @app.post("/api/look_at")
 async def look_at(target: LookAt):
-    await broadcast({"type": "look_at", "x": target.x, "y": target.y})
+    await action_executor.execute(actions.look_at(target.x, target.y))
     return {"ok": True}
 
 
 @app.post("/api/blink")
 async def trigger_blink():
+    # BLINK isn't one of Pepon's 6 action types (it's a phone-only visual
+    # tic, not something a future hardware body would need) — still just
+    # a direct WebSocket message, not routed through the executor.
     await broadcast({"type": "blink"})
+    return {"ok": True}
+
+
+@app.post("/api/action")
+async def post_action(payload: Dict[str, Any]):
+    """Generic action trigger for manual testing — accepts exactly the
+    structured shape an Agent would produce, e.g.
+    {"type": "LOOK_AT", "target": "bottle", "x": 0.61, "y": -0.1}."""
+    try:
+        action_type = ActionType(payload["type"])
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=400, detail="missing or invalid 'type'")
+    params = {k: v for k, v in payload.items() if k != "type"}
+    await action_executor.execute(Action(action_type, params))
     return {"ok": True}
 
 
@@ -305,6 +328,9 @@ async def broadcast(payload: dict):
         except Exception:
             dead.add(ws)
     connections.difference_update(dead)
+
+
+action_executor = PhoneExecutor(broadcast)
 
 
 def _lan_ip() -> str:
