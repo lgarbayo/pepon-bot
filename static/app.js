@@ -250,15 +250,29 @@ async function startCamera() {
     console.warn('getUserMedia unavailable (needs https or localhost)');
     return;
   }
+  const videoBase = { width: { ideal: CAMERA_WIDTH }, height: { ideal: CAMERA_HEIGHT } };
+  let stream;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: CAMERA_WIDTH },
-        height: { ideal: CAMERA_HEIGHT },
-        facingMode: 'environment',
-      },
+    // Forced front/selfie camera — plain facingMode:'user' is only a hint
+    // and some devices/browsers ignore it and fall back to the rear camera.
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { ...videoBase, facingMode: { exact: 'user' } },
       audio: false,
     });
+  } catch (err) {
+    console.warn('Exact front camera unavailable, falling back to any camera:', err);
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { ...videoBase, facingMode: 'user' },
+        audio: false,
+      });
+    } catch (err2) {
+      console.error('Camera unavailable:', err2);
+      return;
+    }
+  }
+
+  try {
     cameraVideo = document.createElement('video');
     cameraVideo.playsInline = true;
     cameraVideo.muted = true;
