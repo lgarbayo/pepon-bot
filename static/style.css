@@ -220,18 +220,24 @@ html, body {
   text-transform: uppercase;
 }
 
+/* Siri-style: one circular button, tap to start/end a conversation —
+   deliberately round (not the octagon eyes' shape) so it always reads
+   as "the button", never as part of Pepon's face. */
 #talk-btn {
   position: fixed;
-  bottom: 28px;
+  bottom: 32px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 14px 18px;
-  border: 3px solid var(--gb-darkest);
+  width: 72px;
+  height: 72px;
+  border: 4px solid var(--gb-darkest);
+  border-radius: 50%;
   background: var(--gb-light);
   color: var(--gb-darkest);
-  font-family: inherit;
-  font-size: 10px;
-  letter-spacing: 1px;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: 4px 4px 0 var(--gb-darkest); /* flat pixel drop-shadow, no blur */
 }
 
@@ -239,6 +245,20 @@ html, body {
   background: var(--gb-dark);
   box-shadow: 2px 2px 0 var(--gb-darkest);
   transform: translateX(-50%) translate(2px, 2px);
+}
+
+/* Active conversation: inverted colors + a steady pixel-pulse so it's
+   obvious at a glance the mic is live, without a blurred "recording"
+   glow that would clash with the rest of the pixel-art look. */
+#talk-btn.listening {
+  background: var(--gb-darkest);
+  color: var(--gb-lightest);
+  animation: talk-pulse 800ms steps(2, end) infinite;
+}
+
+@keyframes talk-pulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.12); }
 }
 
 #camera-switch-btn {

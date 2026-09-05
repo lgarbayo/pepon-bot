@@ -21,15 +21,15 @@ rendering over this same WebSocket; a future hardware executor would
 plug in without changing any of the code that produces actions.
 Voice: STT runs entirely on the backend via SpeechService (local
 Whisper), not the browser — the phone only captures audio (getUserMedia
-+ MediaRecorder, works on any browser). Hands-free repeatedly POSTs
-short rolling clips to /api/voice/transcribe (transcribe only, no side
-effects) and app.js watches the returned text for the wake word
-client-side; push-to-talk instead POSTs one clip straight to
-/api/voice/audio, which transcribes AND runs the full pipeline (an
-explicit tap already means "act on this"). Either way the resulting
-text goes through intent.parse() -> a structured intent (deterministic,
-no LLM) -> Agent -> Action(s) using WorldState, the same as a typed
-/api/voice_command call. Each voice command is recorded as one
++ MediaRecorder, works on any browser). One tap on the phone's talk
+button starts a conversation: app.js repeatedly POSTs rolling clips
+straight to /api/voice/audio, which transcribes AND runs the full
+pipeline on each one (an active conversation already means "act on
+this" — no wake word needed per turn). The resulting text goes through
+intent.parse() -> a structured intent (deterministic, no LLM) -> Agent
+-> Action(s) using WorldState, the same as a typed /api/voice_command
+call. /api/voice/transcribe (transcribe only, no side effects) is kept
+for manual testing. Each voice command is recorded as one
 EpisodeRecorder episode (data/episodes/) — instruction, actions taken,
 and result — off the event loop so it never stalls the live demo.
 """
@@ -416,12 +416,13 @@ async def post_voice_command(cmd: VoiceCommand):
 
 @app.post("/api/voice/audio")
 async def post_voice_audio(request: Request):
-    """Push-to-talk entry point, browser-agnostic: the phone records a
+    """Conversation entry point, browser-agnostic: the phone records a
     short clip with MediaRecorder (works anywhere, unlike Chrome-only
-    SpeechRecognition) and POSTs the raw bytes here. STT runs locally
-    via SpeechService (Whisper) instead of a cloud/browser recognizer,
-    then the transcript goes through the exact same pipeline as any
-    other voice command."""
+    SpeechRecognition) and POSTs the raw bytes here, once per turn while
+    the talk button's conversation is active. STT runs locally via
+    SpeechService (Whisper) instead of a cloud/browser recognizer, then
+    the transcript goes through the exact same pipeline as any other
+    voice command."""
     global last_voice_heard
     if speech_service is None:
         raise HTTPException(status_code=503, detail="speech model still loading")
@@ -438,11 +439,9 @@ async def post_voice_audio(request: Request):
 
 @app.post("/api/voice/transcribe")
 async def post_voice_transcribe(request: Request):
-    """Hands-free entry point: transcribes a rolling audio clip with NO
-    side effects (no intent routing, no Agent, no recorder). The phone
-    runs this on every chunk while listening for the wake word — only
-    once app.js's own handleTranscript() spots "pepon" in the text does
-    anything reach /api/voice/audio or the WS voice_command path."""
+    """Transcribes a clip with NO side effects (no intent routing, no
+    Agent, no recorder) — not used by the phone UI itself, kept for
+    manually testing SpeechService/Whisper in isolation."""
     if speech_service is None:
         raise HTTPException(status_code=503, detail="speech model still loading")
     audio_bytes = await request.body()

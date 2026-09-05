@@ -159,8 +159,36 @@ function speakText(text) {
   utterance.lang = 'es-ES'; // Agent's spoken responses are Spanish now
   utterance.onstart = () => { isTalking = true; };
   utterance.onend = () => { isTalking = false; };
-  utterance.onerror = () => { isTalking = false; };
+  utterance.onerror = (event) => {
+    isTalking = false;
+    // e.g. "not-allowed" if this fires before any real tap on the page —
+    // Chrome/Android mute speechSynthesis until user activation, which
+    // hands-free voice (no click involved) never provides on its own.
+    console.error('[speak] synthesis error:', event.error);
+    sendJSON({ type: 'voice_error', error: `speak: ${event.error}` });
+  };
   speechSynthesis.speak(utterance);
+}
+
+// Android Chrome sometimes has no voices loaded yet on first use, and
+// separately mutes speechSynthesis entirely until the page has real
+// user activation (a tap), which hands-free voice never provides on
+// its own. Priming both here means the FIRST tap anywhere on the page
+// (opening it, granting mic permission, tapping the talk button, ...)
+// is enough to unlock spoken responses for the rest of the session —
+// without this, LOOK_AT/ANSWER_LOCATION/etc. still execute silently.
+if ('speechSynthesis' in window) {
+  speechSynthesis.getVoices();
+  speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+  document.body.addEventListener(
+    'pointerdown',
+    () => {
+      const unlock = new SpeechSynthesisUtterance('');
+      unlock.volume = 0;
+      speechSynthesis.speak(unlock);
+    },
+    { once: true }
+  );
 }
 
 function sendJSON(obj) {
@@ -258,6 +286,17 @@ async function startCamera(facingMode = currentFacingMode) {
     console.warn('getUserMedia unavailable (needs https or localhost)');
     return false;
   }
+
+  // Release whatever camera is currently active BEFORE requesting a new
+  // one — most Android devices only allow one open camera session at a
+  // time, so asking for the rear camera while the front one is still
+  // active can silently hand back the same front stream again instead
+  // of erroring, which is why switching looked like a no-op.
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((track) => track.stop());
+    cameraStream = null;
+  }
+
   const videoBase = { width: { ideal: CAMERA_WIDTH }, height: { ideal: CAMERA_HEIGHT } };
   let stream;
   try {
@@ -281,9 +320,6 @@ async function startCamera(facingMode = currentFacingMode) {
   }
 
   try {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop()); // release the previous camera first
-    }
     cameraStream = stream;
     currentFacingMode = facingMode;
     if (!cameraVideo) {
@@ -411,32 +447,21 @@ if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.request
   startMotionSensors();
 }
 
-// ---------- Voice interaction (wake word + commands) ----------
+// ---------- Voice interaction (Siri-style conversation button) ----------
 // STT runs entirely on the backend via Whisper (SpeechService) — the
 // phone only captures audio (getUserMedia + MediaRecorder, supported
-// on any browser, unlike Chrome-only SpeechRecognition) and uploads
-// short clips. One persistent mic stream is opened once for the whole
-// page life and shared between the hands-free loop and push-to-talk,
-// so the OS mic-active indicator/chime fires once, not on every
-// restart like the old continuous SpeechRecognition used to.
+// on any browser, unlike Chrome-only SpeechRecognition).
 //
-// Hands-free: records rolling HANDSFREE_CHUNK_MS clips, transcribes
-// each with no side effects (POST /api/voice/transcribe), and feeds
-// the text into the same wake-word state machine as everywhere else
-// (handleTranscript) — "Pepon, <command>" in one breath, or "Pepon"
-// then the command as a separate utterance. Push-to-talk instead POSTs
-// straight to /api/voice/audio (transcribe + run the full pipeline) —
-// tapping the button is already the "I mean this" signal, no wake-word
-// gating needed.
-//
-// Tradeoff: hands-free resolution is one HANDSFREE_CHUNK_MS window, so
-// there's up to ~4s latency before Pepon reacts, and a phrase spoken
-// right across a chunk boundary can be missed — push-to-talk stays
-// available for an instant, reliable command.
-const WAKE_WORD = 'pepon';
-const COMMAND_TIMEOUT_MS = 6000; // give up waiting for a command after this long
-const HANDSFREE_CHUNK_MS = 4000; // resolution of hands-free wake-word detection
-const MAX_RECORDING_MS = 8000; // push-to-talk safety net if the user never taps again
+// One button, one gesture: tap to start a conversation, tap again to
+// end it. While active, Pepon keeps listening in rolling CHUNK_MS clips
+// and treats each one as a command directly — no wake word, no per-turn
+// "stop recording" step, since tapping the button already is the "I'm
+// talking to you" signal, same as pressing Siri's mic once and just
+// talking. This single deliberate tap is also what unlocks
+// speechSynthesis (browsers mute it until a real user gesture happens
+// on the page), so it's the one thing this whole app ever asks you to
+// physically touch.
+const CHUNK_MS = 4000; // resolution of turn-taking while a conversation is active
 
 const RECORDING_MIME_TYPE = [
   'audio/webm;codecs=opus',
@@ -444,21 +469,8 @@ const RECORDING_MIME_TYPE = [
   'audio/mp4', // Safari
 ].find((type) => window.MediaRecorder && MediaRecorder.isTypeSupported(type));
 
-let awaitingWakeWord = true;
-let commandTimeout = null;
 let micStream = null;
-let handsFreeEnabled = true; // paused while push-to-talk owns the mic
-
-// Fires once at startup, when the WebSocket may not be open yet — unlike
-// sendJSON's fire-and-forget, this retries so a startup-time diagnostic
-// (e.g. "MediaRecorder unsupported") doesn't get silently dropped.
-function sendJSONWhenReady(obj, retriesLeft = 10) {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(obj));
-  } else if (retriesLeft > 0) {
-    setTimeout(() => sendJSONWhenReady(obj, retriesLeft - 1), 300);
-  }
-}
+let conversationActive = false;
 
 async function ensureMicStream() {
   if (micStream) return micStream;
@@ -468,15 +480,13 @@ async function ensureMicStream() {
     return micStream;
   } catch (err) {
     console.error('[voice] mic permission denied:', err);
-    sendJSONWhenReady({ type: 'voice_error', error: `mic: ${err.message}` });
+    sendJSON({ type: 'voice_error', error: `mic: ${err.message}` });
     return null;
   }
 }
 
-// Records exactly one clip on the given (shared, already-open) stream
-// and resolves with it — used by both the hands-free loop and
-// push-to-talk, just with different durations/stop triggers.
-function recordClip(stream, { durationMs, stopSignal }) {
+// Records exactly one clip on the given (shared, already-open) stream.
+function recordClip(stream, durationMs) {
   return new Promise((resolve) => {
     const chunks = [];
     const rec = RECORDING_MIME_TYPE
@@ -487,139 +497,84 @@ function recordClip(stream, { durationMs, stopSignal }) {
     };
     rec.onstop = () => resolve(new Blob(chunks, { type: rec.mimeType }));
     rec.start();
-    if (stopSignal) stopSignal.rec = rec; // lets the caller stop it early (push-to-talk tap-to-stop)
     setTimeout(() => {
       if (rec.state === 'recording') rec.stop();
     }, durationMs);
   });
 }
 
-async function handsFreeLoop() {
+// Waits out any window where Pepon is currently speaking, so a
+// continuous conversation doesn't pick up its own voice and re-feed it
+// back in as if the person had said it (a real risk once there's no
+// wake word gating each turn).
+function waitWhileTalking() {
+  return new Promise((resolve) => {
+    (function poll() {
+      if (!isTalking) return resolve();
+      setTimeout(poll, 150);
+    })();
+  });
+}
+
+const talkBtn = document.getElementById('talk-btn');
+talkBtn.addEventListener('click', toggleConversation);
+
+function toggleConversation() {
+  if (conversationActive) {
+    endConversation();
+  } else {
+    startConversation();
+  }
+}
+
+async function startConversation() {
   if (!window.MediaRecorder) {
-    console.warn('MediaRecorder unsupported — hands-free voice unavailable, use the button');
-    sendJSONWhenReady({ type: 'voice_error', error: 'unsupported' });
+    sendJSON({ type: 'voice_error', error: 'conversation unsupported' });
     return;
   }
   const stream = await ensureMicStream();
   if (!stream) return;
 
-  while (true) {
-    if (!handsFreeEnabled) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      continue;
-    }
-    const blob = await recordClip(stream, { durationMs: HANDSFREE_CHUNK_MS });
-    if (!handsFreeEnabled) continue; // push-to-talk took over mid-recording — drop this clip
+  // The tap that got us here is real user activation — arm speech
+  // synthesis now, before Pepon's first reply ever needs it.
+  if ('speechSynthesis' in window) {
+    const unlock = new SpeechSynthesisUtterance('');
+    unlock.volume = 0;
+    speechSynthesis.speak(unlock);
+  }
+
+  conversationActive = true;
+  talkBtn.classList.add('listening');
+  conversationLoop(stream);
+}
+
+function endConversation() {
+  conversationActive = false;
+  talkBtn.classList.remove('listening');
+}
+
+async function conversationLoop(stream) {
+  while (conversationActive) {
+    await waitWhileTalking();
+    if (!conversationActive) break;
+
+    sendJSON({ type: 'wake_word' }); // LISTENING feedback for this turn
+    const blob = await recordClip(stream, CHUNK_MS);
+    if (!conversationActive) break;
 
     try {
-      const res = await fetch('/api/voice/transcribe', {
+      // Straight to the full pipeline — being in an active conversation
+      // already means "this is a command", same as push-to-talk used to.
+      const res = await fetch('/api/voice/audio', {
         method: 'POST',
         headers: { 'Content-Type': blob.type },
         body: blob,
       });
       const data = await res.json();
-      if (data.transcript) {
-        console.log('[voice] hands-free heard:', data.transcript);
-        sendJSON({ type: 'voice_heard', text: data.transcript }); // raw STT output, for /debug
-        handleTranscript(data.transcript);
-      }
+      if (data.transcript) console.log('[voice] heard:', data.transcript);
     } catch (err) {
-      console.error('[voice] hands-free transcribe failed:', err);
-      sendJSON({ type: 'voice_error', error: `hands-free: ${err.message}` });
+      console.error('[voice] conversation turn failed:', err);
+      sendJSON({ type: 'voice_error', error: `conversation: ${err.message}` });
     }
   }
-}
-
-function handleTranscript(rawText) {
-  const text = rawText.trim();
-  const lower = text.toLowerCase();
-
-  if (awaitingWakeWord) {
-    const wakeIndex = lower.indexOf(WAKE_WORD);
-    if (wakeIndex === -1) return; // not for us
-
-    sendJSON({ type: 'wake_word' });
-
-    // Handle "Pepon, what do you see?" said as a single phrase.
-    const rest = text.slice(wakeIndex + WAKE_WORD.length).replace(/^[,.\s]+/, '');
-    if (rest.length > 2) {
-      sendJSON({ type: 'voice_command', text: rest });
-      awaitingWakeWord = true;
-      return;
-    }
-
-    awaitingWakeWord = false;
-    clearTimeout(commandTimeout);
-    commandTimeout = setTimeout(() => { awaitingWakeWord = true; }, COMMAND_TIMEOUT_MS);
-    return;
-  }
-
-  clearTimeout(commandTimeout);
-  awaitingWakeWord = true;
-  sendJSON({ type: 'voice_command', text });
-}
-
-handsFreeLoop();
-
-// ---------- Push-to-talk ----------
-// Explicit tap = "I mean this right now", so it skips wake-word gating
-// and POSTs straight to /api/voice/audio (transcribe + run the full
-// pipeline). Shares the same persistent mic stream as the hands-free
-// loop instead of requesting a second one.
-
-const talkBtn = document.getElementById('talk-btn');
-talkBtn.addEventListener('click', togglePushToTalk);
-
-let activePushToTalkStop = null;
-
-function togglePushToTalk() {
-  if (activePushToTalkStop) {
-    activePushToTalkStop();
-  } else {
-    startPushToTalk();
-  }
-}
-
-async function startPushToTalk() {
-  if (!window.MediaRecorder) {
-    sendJSON({ type: 'voice_error', error: 'push-to-talk unsupported' });
-    return;
-  }
-  const stream = await ensureMicStream();
-  if (!stream) return;
-
-  handsFreeEnabled = false; // pause the hands-free loop while this recording owns the mic
-  talkBtn.textContent = '🔴 GRABANDO (toca para parar)';
-  sendJSON({ type: 'wake_word' }); // immediate LISTENING feedback on tap
-
-  // recordClip's own internal timeout is the auto-stop safety net (tap
-  // again to stop early via stopSignal.rec); this just needs clearing
-  // once the recording actually ends, however it ended.
-  const stopSignal = {};
-  activePushToTalkStop = () => {
-    if (stopSignal.rec && stopSignal.rec.state === 'recording') stopSignal.rec.stop();
-  };
-
-  const blob = await recordClip(stream, { durationMs: MAX_RECORDING_MS, stopSignal });
-  activePushToTalkStop = null;
-  await sendRecordedClip(blob);
-}
-
-async function sendRecordedClip(blob) {
-  talkBtn.textContent = '🎤 TAP TO TALK';
-
-  try {
-    const res = await fetch('/api/voice/audio', {
-      method: 'POST',
-      headers: { 'Content-Type': blob.type },
-      body: blob,
-    });
-    const data = await res.json();
-    console.log('[voice] push-to-talk transcript:', data.transcript);
-  } catch (err) {
-    console.error('[voice] push-to-talk upload failed:', err);
-    sendJSON({ type: 'voice_error', error: `ptt upload: ${err.message}` });
-  }
-
-  handsFreeEnabled = true; // resume hands-free listening
 }
