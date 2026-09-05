@@ -19,18 +19,19 @@ the above together for a future voice Agent to read. Anything Pepon
 as an Action and carried out by an ActionExecutor — today PhoneExecutor,
 rendering over this same WebSocket; a future hardware executor would
 plug in without changing any of the code that produces actions.
-Voice: two paths feed the same intent.parse() -> Agent pipeline. The
-always-on wake-word listener still uses the phone's Web Speech API
-(Chromium only) and sends recognized text over the WebSocket. Push-to-
-talk instead records a short clip with MediaRecorder (any browser),
-POSTs it to /api/voice/audio, and SpeechService (local Whisper) does
-STT on the backend — so voice input isn't tied to Chrome, and the mic
-only opens for the length of that one recording. intent.parse() turns
-either path's text into a structured intent (deterministic, no LLM)
-and Agent maps that to Action(s) using WorldState. Each voice command
-is recorded as one EpisodeRecorder episode (data/episodes/) —
-instruction, actions taken, and result — off the event loop so it
-never stalls the live demo.
+Voice: STT runs entirely on the backend via SpeechService (local
+Whisper), not the browser — the phone only captures audio (getUserMedia
++ MediaRecorder, works on any browser). Hands-free repeatedly POSTs
+short rolling clips to /api/voice/transcribe (transcribe only, no side
+effects) and app.js watches the returned text for the wake word
+client-side; push-to-talk instead POSTs one clip straight to
+/api/voice/audio, which transcribes AND runs the full pipeline (an
+explicit tap already means "act on this"). Either way the resulting
+text goes through intent.parse() -> a structured intent (deterministic,
+no LLM) -> Agent -> Action(s) using WorldState, the same as a typed
+/api/voice_command call. Each voice command is recorded as one
+EpisodeRecorder episode (data/episodes/) — instruction, actions taken,
+and result — off the event loop so it never stalls the live demo.
 """
 import asyncio
 import json
@@ -433,6 +434,22 @@ async def post_voice_audio(request: Request):
         return {"transcript": ""}
     result = await _route_voice_text(text)
     return {"transcript": text, **result}
+
+
+@app.post("/api/voice/transcribe")
+async def post_voice_transcribe(request: Request):
+    """Hands-free entry point: transcribes a rolling audio clip with NO
+    side effects (no intent routing, no Agent, no recorder). The phone
+    runs this on every chunk while listening for the wake word — only
+    once app.js's own handleTranscript() spots "pepon" in the text does
+    anything reach /api/voice/audio or the WS voice_command path."""
+    if speech_service is None:
+        raise HTTPException(status_code=503, detail="speech model still loading")
+    audio_bytes = await request.body()
+    if not audio_bytes:
+        return {"transcript": ""}
+    text = await asyncio.to_thread(speech_service.transcribe, audio_bytes)
+    return {"transcript": text}
 
 
 @app.post("/api/action")
