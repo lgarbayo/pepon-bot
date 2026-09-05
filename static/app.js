@@ -500,6 +500,7 @@ function startVoiceRecognition() {
 }
 
 function safeStartRecognition() {
+  if (!recognition) return; // SpeechRecognition unsupported on this browser — push-to-talk still works
   try {
     recognition.start();
   } catch (err) {
@@ -541,60 +542,104 @@ function handleTranscript(rawText) {
 
 startVoiceRecognition();
 
-// ---------- Push-to-talk (fallback for when the always-on wake-word
-// listener is unreliable — no wake word needed, no restart/beep cycle,
-// just one capture per tap) ----------
+// ---------- Push-to-talk ----------
+// Records a short clip with MediaRecorder and POSTs it to the backend,
+// which runs STT locally (Whisper) instead of Chrome's Web Speech API.
+// Two deliberate wins over the always-on listener above: works on any
+// browser (getUserMedia/MediaRecorder are near-universal, unlike
+// SpeechRecognition which only Chromium implements), and the mic only
+// opens for exactly the length of one recording — no restart/beep cycle.
 
 const talkBtn = document.getElementById('talk-btn');
-talkBtn.addEventListener('click', startPushToTalk);
+talkBtn.addEventListener('click', togglePushToTalk);
 
-function startPushToTalk() {
-  const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognitionImpl) {
-    console.warn('SpeechRecognition unsupported on this browser');
+const RECORDING_MIME_TYPE = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/mp4', // Safari
+].find((type) => window.MediaRecorder && MediaRecorder.isTypeSupported(type));
+
+const MAX_RECORDING_MS = 8000; // safety net if the user never taps again
+let mediaRecorder = null;
+let recordingChunks = [];
+let recordingStream = null;
+let autoStopTimer = null;
+
+function togglePushToTalk() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    stopPushToTalk();
+  } else {
+    startPushToTalk();
+  }
+}
+
+async function startPushToTalk() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
+    console.warn('MediaRecorder/getUserMedia unsupported on this browser');
+    sendJSON({ type: 'voice_error', error: 'push-to-talk unsupported' });
     return;
   }
 
-  // Pause the background listener so it doesn't fight this one-shot
-  // capture over the microphone, then give Android a beat to actually
-  // release it before starting a new session.
+  // Pause the background wake-word listener (if running at all — only
+  // Chromium has it) so it doesn't fight this recording over the mic.
   voiceEnabled = false;
   if (recognition) {
     try { recognition.stop(); } catch (err) { /* already stopped */ }
   }
 
+  try {
+    recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    console.error('[voice] mic permission denied:', err);
+    sendJSON({ type: 'voice_error', error: `ptt mic: ${err.message}` });
+    voiceEnabled = true;
+    safeStartRecognition();
+    return;
+  }
+
+  recordingChunks = [];
+  mediaRecorder = RECORDING_MIME_TYPE
+    ? new MediaRecorder(recordingStream, { mimeType: RECORDING_MIME_TYPE })
+    : new MediaRecorder(recordingStream);
+
+  mediaRecorder.ondataavailable = (event) => {
+    if (event.data.size > 0) recordingChunks.push(event.data);
+  };
+  mediaRecorder.onstop = sendRecordedClip;
+
+  mediaRecorder.start();
   sendJSON({ type: 'wake_word' }); // immediate LISTENING feedback on tap
+  talkBtn.textContent = '🔴 GRABANDO (toca para parar)';
+  autoStopTimer = setTimeout(stopPushToTalk, MAX_RECORDING_MS);
+}
 
-  setTimeout(() => {
-    const rec = new SpeechRecognitionImpl();
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.lang = 'es-ES';
+function stopPushToTalk() {
+  clearTimeout(autoStopTimer);
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop(); // fires onstop -> sendRecordedClip
+  }
+}
 
-    rec.onresult = (event) => {
-      const result = event.results[event.results.length - 1];
-      if (result.isFinal) {
-        const transcript = result[0].transcript;
-        console.log('[voice] push-to-talk heard:', transcript);
-        sendJSON({ type: 'voice_heard', text: transcript });
-        sendJSON({ type: 'voice_command', text: transcript });
-      }
-    };
-    rec.onerror = (event) => {
-      console.warn('[voice] push-to-talk error:', event.error);
-      sendJSON({ type: 'voice_error', error: `ptt: ${event.error}` });
-    };
-    rec.onend = () => {
-      voiceEnabled = true;
-      safeStartRecognition(); // resume the background wake-word listener
-    };
+async function sendRecordedClip() {
+  talkBtn.textContent = '🎤 TAP TO TALK';
+  recordingStream.getTracks().forEach((track) => track.stop()); // release the mic now, not later
 
-    try {
-      rec.start();
-    } catch (err) {
-      console.error('[voice] push-to-talk start failed:', err);
-      voiceEnabled = true;
-      safeStartRecognition();
-    }
-  }, 300);
+  const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType });
+  recordingChunks = [];
+
+  try {
+    const res = await fetch('/api/voice/audio', {
+      method: 'POST',
+      headers: { 'Content-Type': blob.type },
+      body: blob,
+    });
+    const data = await res.json();
+    console.log('[voice] push-to-talk transcript:', data.transcript);
+  } catch (err) {
+    console.error('[voice] push-to-talk upload failed:', err);
+    sendJSON({ type: 'voice_error', error: `ptt upload: ${err.message}` });
+  }
+
+  voiceEnabled = true;
+  safeStartRecognition(); // resume the background wake-word listener, if supported
 }

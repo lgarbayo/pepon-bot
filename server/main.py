@@ -19,12 +19,18 @@ the above together for a future voice Agent to read. Anything Pepon
 as an Action and carried out by an ActionExecutor — today PhoneExecutor,
 rendering over this same WebSocket; a future hardware executor would
 plug in without changing any of the code that produces actions.
-Voice: the phone does STT (Web Speech API) and sends recognized text
-over the WebSocket; intent.parse() turns it into a structured intent
-(deterministic, no LLM) and Agent maps that to Action(s) using
-WorldState. Each voice command is recorded as one EpisodeRecorder
-episode (data/episodes/) — instruction, actions taken, and result —
-off the event loop so it never stalls the live demo.
+Voice: two paths feed the same intent.parse() -> Agent pipeline. The
+always-on wake-word listener still uses the phone's Web Speech API
+(Chromium only) and sends recognized text over the WebSocket. Push-to-
+talk instead records a short clip with MediaRecorder (any browser),
+POSTs it to /api/voice/audio, and SpeechService (local Whisper) does
+STT on the backend — so voice input isn't tied to Chrome, and the mic
+only opens for the length of that one recording. intent.parse() turns
+either path's text into a structured intent (deterministic, no LLM)
+and Agent maps that to Action(s) using WorldState. Each voice command
+is recorded as one EpisodeRecorder episode (data/episodes/) —
+instruction, actions taken, and result — off the event loop so it
+never stalls the live demo.
 """
 import asyncio
 import json
@@ -38,7 +44,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Set
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
@@ -52,6 +58,7 @@ from cognition.gemma_agent import GemmaAgent
 from perception import PerceptionService
 from proprioception import MotionClassifier
 from recorder import EpisodeRecorder
+from speech import SpeechService
 from tracking import PersonTracker
 from world_state import WorldState
 
@@ -141,6 +148,7 @@ person_tracker = PersonTracker()
 motion_classifier = MotionClassifier()
 last_voice_heard: Optional[dict] = None  # raw STT transcript, for live debugging
 last_voice_error: Optional[dict] = None  # SpeechRecognition error, for live debugging
+speech_service: Optional[SpeechService] = None
 
 
 @app.on_event("startup")
@@ -150,6 +158,14 @@ async def load_perception_model():
     perception_service = await asyncio.to_thread(PerceptionService)
     print("[perception] model ready")
     asyncio.create_task(_detection_loop())
+
+
+@app.on_event("startup")
+async def load_speech_model():
+    global speech_service
+    print("[speech] loading Whisper...")
+    speech_service = await asyncio.to_thread(SpeechService)
+    print(f"[speech] model ready (device={speech_service.device})")
 
 
 @app.on_event("startup")
@@ -334,6 +350,7 @@ async def health():
     return {
         "backend": "ok",
         "vision": "ok" if perception_service is not None else "loading",
+        "speech": "ok" if speech_service is not None else "loading",
         "gemma": await gemma_agent.health(),
     }
 
@@ -394,6 +411,28 @@ async def post_voice_command(cmd: VoiceCommand):
     Action(s). Mirrors exactly what the phone sends after hearing the
     wake word."""
     return await _route_voice_text(cmd.text)
+
+
+@app.post("/api/voice/audio")
+async def post_voice_audio(request: Request):
+    """Push-to-talk entry point, browser-agnostic: the phone records a
+    short clip with MediaRecorder (works anywhere, unlike Chrome-only
+    SpeechRecognition) and POSTs the raw bytes here. STT runs locally
+    via SpeechService (Whisper) instead of a cloud/browser recognizer,
+    then the transcript goes through the exact same pipeline as any
+    other voice command."""
+    global last_voice_heard
+    if speech_service is None:
+        raise HTTPException(status_code=503, detail="speech model still loading")
+    audio_bytes = await request.body()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="empty audio")
+    text = await asyncio.to_thread(speech_service.transcribe, audio_bytes)
+    last_voice_heard = {"text": text, "at": time.time()}
+    if not text:
+        return {"transcript": ""}
+    result = await _route_voice_text(text)
+    return {"transcript": text, **result}
 
 
 @app.post("/api/action")
