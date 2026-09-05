@@ -1,11 +1,14 @@
-"""PeponBot backend — WebSocket link + state broadcast + camera ingest.
+"""PeponBot backend — WebSocket link + state broadcast + camera ingest
++ object detection.
 
-No object detection yet. Just: FastAPI serves the phone UI, holds a
-Pepon state (IDLE / LISTENING / THINKING / SEARCHING / FOUND /
-CONFUSED), pushes state/look_at/blink messages to the phone, and
-receives a live JPEG frame stream from the phone's camera over the
-same WebSocket (binary messages), tracking basic ingest metrics.
+FastAPI serves the phone UI, holds a Pepon state (IDLE / LISTENING /
+THINKING / SEARCHING / FOUND / CONFUSED), pushes state/look_at/blink
+messages to the phone, receives a live JPEG frame stream from the
+phone's camera over the same WebSocket (binary messages), and
+periodically runs object detection on the latest frame via
+PerceptionService — broadcasting detections back over the WebSocket.
 """
+import asyncio
 import socket
 import subprocess
 import time
@@ -21,6 +24,8 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
+
+from perception import PerceptionService
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -88,6 +93,39 @@ class FrameStats:
 frame_stats = FrameStats()
 last_frame_jpeg: Optional[bytes] = None
 
+# Detection runs on a timer against whatever the latest frame is, not on
+# every incoming frame — a nano model is fast, but there's no reason to
+# burn CPU re-detecting frames the phone barely moved between.
+DETECTION_INTERVAL_SECONDS = 0.4
+perception_service: Optional[PerceptionService] = None
+last_detections: list = []
+last_detection_at: Optional[float] = None
+
+
+@app.on_event("startup")
+async def load_perception_model():
+    global perception_service
+    print("[perception] loading YOLOv8n...")
+    perception_service = await asyncio.to_thread(PerceptionService)
+    print("[perception] model ready")
+    asyncio.create_task(_detection_loop())
+
+
+async def _detection_loop():
+    global last_detections, last_detection_at
+    while True:
+        await asyncio.sleep(DETECTION_INTERVAL_SECONDS)
+        if perception_service is None or last_frame_jpeg is None:
+            continue
+        try:
+            detections = await asyncio.to_thread(perception_service.detect, last_frame_jpeg)
+        except Exception as exc:
+            print(f"[perception] detection failed: {exc}")
+            continue
+        last_detections = [d.as_dict() for d in detections]
+        last_detection_at = time.time()
+        await broadcast({"type": "detections", "objects": last_detections})
+
 
 @app.get("/")
 async def index():
@@ -138,6 +176,11 @@ async def camera_frame():
     if last_frame_jpeg is None:
         raise HTTPException(status_code=404, detail="no frame received yet")
     return Response(content=last_frame_jpeg, media_type="image/jpeg")
+
+
+@app.get("/api/detections")
+async def get_detections():
+    return {"objects": last_detections, "last_detection_at": last_detection_at}
 
 
 class StateUpdate(BaseModel):

@@ -13,25 +13,34 @@
     font-family: -apple-system, system-ui, sans-serif;
   }
   h1 { font-size: 16px; letter-spacing: 1px; opacity: 0.8; margin: 0 0 16px; }
-  #frame {
-    display: block;
+  #frame-container {
+    position: relative;
     width: 100%;
     max-width: 640px;
     aspect-ratio: 4 / 3;
-    object-fit: contain;
     background: #000;
     border-radius: 8px;
     border: 1px solid #222;
+    overflow: hidden;
+  }
+  #frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
   }
   #placeholder {
-    max-width: 640px;
-    aspect-ratio: 4 / 3;
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #000;
-    border-radius: 8px;
-    border: 1px solid #222;
     opacity: 0.5;
   }
   table { margin-top: 16px; border-collapse: collapse; font-size: 14px; }
@@ -39,12 +48,18 @@
   td.label { opacity: 0.6; }
   .stale { color: #e74c3c; font-weight: bold; }
   .fresh { color: #33e0a1; font-weight: bold; }
+  #detections { margin-top: 16px; font-size: 13px; }
+  #detections div { padding: 3px 0; }
+  .cls { color: #33e0a1; font-weight: bold; }
 </style>
 </head>
 <body>
   <h1>PEPONBOT — CAMERA DEBUG</h1>
-  <img id="frame" style="display:none;">
-  <div id="placeholder">waiting for first frame...</div>
+  <div id="frame-container">
+    <img id="frame" style="display:none;">
+    <canvas id="overlay"></canvas>
+    <div id="placeholder">waiting for first frame...</div>
+  </div>
 
   <table>
     <tr><td class="label">frames received</td><td id="stat-frames">-</td></tr>
@@ -53,9 +68,15 @@
     <tr><td class="label">last frame</td><td id="stat-age">-</td></tr>
   </table>
 
+  <div id="detections">no detections yet</div>
+
   <script>
     const img = document.getElementById('frame');
     const placeholder = document.getElementById('placeholder');
+    const overlay = document.getElementById('overlay');
+    const octx = overlay.getContext('2d');
+    let frameW = 0;
+    let frameH = 0;
 
     async function refreshFrame() {
       const res = await fetch(`/api/camera/frame.jpg?t=${Date.now()}`);
@@ -70,6 +91,8 @@
     async function refreshStats() {
       const res = await fetch('/api/camera/stats');
       const s = await res.json();
+      frameW = s.width;
+      frameH = s.height;
       document.getElementById('stat-frames').textContent = s.frames_received;
       document.getElementById('stat-fps').textContent = s.fps;
       document.getElementById('stat-dims').textContent = s.width && s.height ? `${s.width} x ${s.height}` : '-';
@@ -84,10 +107,61 @@
       }
     }
 
+    async function refreshDetections() {
+      const res = await fetch('/api/detections');
+      const d = await res.json();
+      drawBoxes(d.objects);
+      const list = document.getElementById('detections');
+      list.innerHTML = d.objects.length
+        ? d.objects.map(o =>
+            `<div><span class="cls">${o.class}</span> conf=${o.confidence} x=${o.x} y=${o.y}</div>`
+          ).join('')
+        : 'no objects detected';
+    }
+
+    function drawBoxes(objects) {
+      const displayW = overlay.clientWidth;
+      const displayH = overlay.clientHeight;
+      overlay.width = displayW;
+      overlay.height = displayH;
+      octx.clearRect(0, 0, displayW, displayH);
+      if (!frameW || !frameH || !objects.length) return;
+
+      // img is object-fit:contain inside the container — figure out the
+      // actual letterboxed rect the frame is drawn into before scaling boxes.
+      const scale = Math.min(displayW / frameW, displayH / frameH);
+      const drawW = frameW * scale;
+      const drawH = frameH * scale;
+      const offsetX = (displayW - drawW) / 2;
+      const offsetY = (displayH - drawH) / 2;
+
+      octx.strokeStyle = '#33e0a1';
+      octx.lineWidth = 2;
+      octx.font = '13px -apple-system, system-ui, sans-serif';
+      octx.textBaseline = 'bottom';
+
+      for (const o of objects) {
+        const [x1, y1, x2, y2] = o.bbox;
+        const bx = offsetX + x1 * scale;
+        const by = offsetY + y1 * scale;
+        const bw = (x2 - x1) * scale;
+        const bh = (y2 - y1) * scale;
+        octx.strokeRect(bx, by, bw, bh);
+        const label = `${o.class} ${o.confidence}`;
+        const textW = octx.measureText(label).width;
+        octx.fillStyle = '#33e0a1';
+        octx.fillRect(bx, Math.max(0, by - 16), textW + 6, 16);
+        octx.fillStyle = '#0b0e14';
+        octx.fillText(label, bx + 3, Math.max(16, by));
+      }
+    }
+
     setInterval(refreshFrame, 300);
     setInterval(refreshStats, 500);
+    setInterval(refreshDetections, 400);
     refreshFrame();
     refreshStats();
+    refreshDetections();
   </script>
 </body>
 </html>

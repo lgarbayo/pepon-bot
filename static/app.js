@@ -135,6 +135,9 @@ function connect() {
       case 'blink':
         Pepon.blink();
         break;
+      case 'detections':
+        console.log('[detections]', msg.objects);
+        break;
     }
   };
 
