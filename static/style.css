@@ -194,3 +194,23 @@ html, body {
   text-transform: uppercase;
   opacity: 0.6;
 }
+
+#talk-btn {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 1px solid #333;
+  background: #12141a;
+  color: #cdd6e4;
+  font-size: 14px;
+  letter-spacing: 1px;
+  opacity: 0.85;
+}
+
+#talk-btn:active {
+  background: #1c2029;
+  opacity: 1;
+}

@@ -505,3 +505,61 @@ function handleTranscript(rawText) {
 }
 
 startVoiceRecognition();
+
+// ---------- Push-to-talk (fallback for when the always-on wake-word
+// listener is unreliable — no wake word needed, no restart/beep cycle,
+// just one capture per tap) ----------
+
+const talkBtn = document.getElementById('talk-btn');
+talkBtn.addEventListener('click', startPushToTalk);
+
+function startPushToTalk() {
+  const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognitionImpl) {
+    console.warn('SpeechRecognition unsupported on this browser');
+    return;
+  }
+
+  // Pause the background listener so it doesn't fight this one-shot
+  // capture over the microphone, then give Android a beat to actually
+  // release it before starting a new session.
+  voiceEnabled = false;
+  if (recognition) {
+    try { recognition.stop(); } catch (err) { /* already stopped */ }
+  }
+
+  sendJSON({ type: 'wake_word' }); // immediate LISTENING feedback on tap
+
+  setTimeout(() => {
+    const rec = new SpeechRecognitionImpl();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = 'en-US';
+
+    rec.onresult = (event) => {
+      const result = event.results[event.results.length - 1];
+      if (result.isFinal) {
+        const transcript = result[0].transcript;
+        console.log('[voice] push-to-talk heard:', transcript);
+        sendJSON({ type: 'voice_heard', text: transcript });
+        sendJSON({ type: 'voice_command', text: transcript });
+      }
+    };
+    rec.onerror = (event) => {
+      console.warn('[voice] push-to-talk error:', event.error);
+      sendJSON({ type: 'voice_error', error: `ptt: ${event.error}` });
+    };
+    rec.onend = () => {
+      voiceEnabled = true;
+      safeStartRecognition(); // resume the background wake-word listener
+    };
+
+    try {
+      rec.start();
+    } catch (err) {
+      console.error('[voice] push-to-talk start failed:', err);
+      voiceEnabled = true;
+      safeStartRecognition();
+    }
+  }, 300);
+}
