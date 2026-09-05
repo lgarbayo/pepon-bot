@@ -22,7 +22,9 @@ plug in without changing any of the code that produces actions.
 Voice: the phone does STT (Web Speech API) and sends recognized text
 over the WebSocket; intent.parse() turns it into a structured intent
 (deterministic, no LLM) and Agent maps that to Action(s) using
-WorldState.
+WorldState. Each voice command is recorded as one EpisodeRecorder
+episode (data/episodes/) — instruction, actions taken, and result —
+off the event loop so it never stalls the live demo.
 """
 import asyncio
 import json
@@ -48,6 +50,7 @@ from actions import Action, ActionType, PhoneExecutor
 from agent import Agent
 from perception import PerceptionService
 from proprioception import MotionClassifier
+from recorder import EpisodeRecorder
 from tracking import PersonTracker
 from world_state import WorldState
 
@@ -146,6 +149,11 @@ async def load_perception_model():
     asyncio.create_task(_detection_loop())
 
 
+@app.on_event("startup")
+async def start_recorder():
+    recorder.start()
+
+
 async def _detection_loop():
     global last_detections, last_detection_at
     while True:
@@ -241,7 +249,7 @@ async def _handle_voice_command(text: str) -> None:
     if not text:
         return
     parsed = intent.parse(text)
-    await agent.handle(parsed)
+    await agent.handle(parsed, transcript=text)
 
 
 def _ingest_frame(data: bytes) -> None:
@@ -343,7 +351,7 @@ async def post_voice_command(cmd: VoiceCommand):
     text -> IntentParser -> Agent -> Action(s). Mirrors exactly what the
     phone sends after hearing the wake word."""
     parsed = intent.parse(cmd.text)
-    await agent.handle(parsed)
+    await agent.handle(parsed, transcript=cmd.text)
     return {"intent": parsed}
 
 
@@ -372,7 +380,26 @@ async def broadcast(payload: dict):
 
 
 action_executor = PhoneExecutor(broadcast)
-agent = Agent(world_state, action_executor)
+recorder = EpisodeRecorder()
+agent = Agent(world_state, action_executor, recorder=recorder, frame_provider=lambda: last_frame_jpeg)
+
+
+@app.get("/api/episodes")
+async def list_episodes(limit: int = 20):
+    """Most recent episodes with their metadata, newest first — for
+    manually eyeballing what got recorded."""
+
+    def _read():
+        dirs = sorted(recorder.base_dir.glob("episode_*"), reverse=True)[:limit]
+        results = []
+        for d in dirs:
+            try:
+                results.append(json.loads((d / "metadata.json").read_text()))
+            except (OSError, json.JSONDecodeError):
+                continue
+        return results
+
+    return await asyncio.to_thread(_read)
 
 
 def _lan_ip() -> str:

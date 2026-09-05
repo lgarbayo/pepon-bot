@@ -55,6 +55,7 @@ class WorldState:
     def __init__(self):
         self.objects: Dict[str, ObjectMemory] = {}
         self.active_target: Optional[str] = None
+        self.active_target_episode_id: Optional[str] = None
         self.pepon_state: str = "IDLE"
         self.phone_motion_phase: str = "STABLE"
         self.last_motion_event: Optional[str] = None
@@ -104,8 +105,9 @@ class WorldState:
     def set_pepon_state(self, state: str) -> None:
         self.pepon_state = state
 
-    def set_active_target(self, cls: Optional[str]) -> None:
+    def set_active_target(self, cls: Optional[str], episode_id: Optional[str] = None) -> None:
         self.active_target = cls
+        self.active_target_episode_id = episode_id if cls is not None else None
 
     # ---- reads ----
 
