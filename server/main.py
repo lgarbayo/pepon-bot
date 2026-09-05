@@ -475,4 +475,8 @@ if __name__ == "__main__":
         port=8000,
         ssl_certfile=str(cert_path),
         ssl_keyfile=str(key_path),
+        # /debug polls several endpoints every 300-500ms — the per-request
+        # access log would otherwise drown out our own prints (perception
+        # errors, recorder failures, ...) right when they matter most.
+        access_log=False,
     )
