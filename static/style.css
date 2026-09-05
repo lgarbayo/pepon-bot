@@ -1,8 +1,16 @@
 :root {
-  --bg: #0b0e14;
-  --eye-bg: #eaf6ff;
-  --pupil-bg: #14161d;
-  --accent-listening: #33e0a1;
+  /* Classic DMG Game Boy 4-shade green palette — this *is* the whole
+     palette, deliberately. No hue is used anywhere to distinguish
+     Pepon's states; that's carried by shape/size/motion + the text
+     label instead, same as an actual Game Boy sprite would have to.
+     Inverted from the stock DMG order (dark screen, bright-green ink)
+     — every --gb-* usage below still means "paper"/"ink" as before,
+     only the two hex values swapped, so the variable names no longer
+     match their literal luminance. */
+  --gb-lightest: #0f380f; /* "paper" — screen background */
+  --gb-light: #306230;
+  --gb-dark: #8bac0f;
+  --gb-darkest: #9bbc0f; /* "ink" — borders, pupils, text */
 }
 
 * { box-sizing: border-box; }
@@ -11,9 +19,12 @@ html, body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--bg);
-  color: #cdd6e4;
-  font-family: -apple-system, system-ui, sans-serif;
+  background: var(--gb-lightest);
+  color: var(--gb-darkest);
+  font-family: 'Press Start 2P', monospace;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  image-rendering: pixelated;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -28,28 +39,31 @@ html, body {
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 10px;
+  font-size: 10px;
   letter-spacing: 1px;
-  opacity: 0.85;
 }
 
 #status-dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
-  background: #666;
-  transition: background 0.3s, box-shadow 0.3s;
+  background: var(--gb-dark);
+  border: 2px solid var(--gb-darkest);
 }
 
 #status-bar.connected #status-dot {
-  background: var(--accent-listening);
-  box-shadow: 0 0 8px var(--accent-listening);
+  background: var(--gb-darkest);
 }
 
+/* No red anywhere — disconnected reads as a blinking ink-dark square,
+   same "alarm" feeling without leaving the 4-green palette. */
 #status-bar.disconnected #status-dot {
-  background: #e74c3c;
-  box-shadow: 0 0 8px #e74c3c;
+  animation: blink-hard 700ms steps(1, end) infinite;
+}
+
+@keyframes blink-hard {
+  0%, 49% { background: var(--gb-darkest); }
+  50%, 100% { background: var(--gb-lightest); }
 }
 
 /* ---------- Face ---------- */
@@ -60,19 +74,28 @@ html, body {
 }
 
 /* Confused: continuous head wiggle. Only rule on #face that uses transform,
-   so it never fights the per-eye state transforms below. */
+   so it never fights the per-eye state transforms below. steps() instead
+   of ease-in-out keeps the motion snapping between frames, not gliding. */
 #face.state-confused {
-  animation: wiggle 0.6s ease-in-out infinite;
+  animation: wiggle 0.6s steps(2, end) infinite;
 }
 
 .eye {
   width: 120px;
   height: 120px;
-  border-radius: 50%;
-  background: var(--eye-bg);
+  background: var(--gb-lightest);
   overflow: hidden;
-  box-shadow: 0 0 28px 4px var(--accent, #4c8bf5);
-  transition: transform 0.35s ease, box-shadow 0.35s ease;
+  /* A stepped octagon reads as a "pixelated circle" — chunky corners
+     instead of a smooth curve. */
+  clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+  /* Flat-color, zero-blur, multi-directional shadow fakes a thick pixel
+     outline — a soft blurred glow would read as "neon", not pixel art. */
+  box-shadow:
+    4px 0 0 var(--accent, var(--gb-darkest)),
+    -4px 0 0 var(--accent, var(--gb-darkest)),
+    0 4px 0 var(--accent, var(--gb-darkest)),
+    0 -4px 0 var(--accent, var(--gb-darkest));
+  transition: transform 0.2s steps(3, end), box-shadow 0.2s steps(3, end);
 }
 
 /* Blink lives on its own wrapper so it can animate scaleY without
@@ -87,7 +110,7 @@ html, body {
 }
 
 .eye-inner.blinking {
-  animation: blink-anim 220ms ease-in-out;
+  animation: blink-anim 220ms steps(4, end);
 }
 
 /* Dizzy wobble lives on its own wrapper too, so a shake reaction can
@@ -102,7 +125,7 @@ html, body {
 }
 
 .dizzy-wrap.dizzy {
-  animation: dizzy-anim 700ms ease-in-out;
+  animation: dizzy-anim 700ms steps(8, end);
 }
 
 /* Gaze direction lives on its own wrapper too — driven purely by JS
@@ -113,53 +136,56 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.18s ease-out;
+  transition: transform 0.18s steps(4, end);
 }
 
 .pupil {
   width: 34px;
   height: 34px;
-  border-radius: 50%;
-  background: var(--pupil-bg);
-  border: 3px solid var(--accent, #4c8bf5);
-  transition: width 0.3s ease, height 0.3s ease, border-color 0.3s ease;
+  background: var(--gb-darkest);
+  border: 3px solid var(--accent, var(--gb-darkest));
+  transition: width 0.2s steps(3, end), height 0.2s steps(3, end), border-color 0.2s steps(3, end);
 }
 
 /* ---------- States ---------- */
+/* Every --accent below is one of the 4 greens — states differ by
+   shape/size/motion (already on each rule) plus the text label under
+   the face, never by color, to stay inside a real Game Boy's palette. */
 
-#face.state-idle { --accent: #4c8bf5; }
+#face.state-idle { --accent: var(--gb-dark); }
 #face.state-idle .eye { transform: scale(1); }
 #face.state-idle .pupil { width: 34px; height: 34px; }
 
-#face.state-listening { --accent: #33e0a1; }
+#face.state-listening { --accent: var(--gb-darkest); }
 #face.state-listening .eye { transform: scale(1.06); }
 #face.state-listening .pupil { width: 44px; height: 44px; }
 
-#face.state-thinking { --accent: #f5a623; }
+#face.state-thinking { --accent: var(--gb-light); }
 #face.state-thinking .eye { transform: scale(1); }
 #face.state-thinking .pupil { width: 34px; height: 34px; }
 
-#face.state-searching { --accent: #a35bff; }
+#face.state-searching { --accent: var(--gb-dark); }
 #face.state-searching .eye { transform: scaleY(0.85); }
 #face.state-searching .pupil { width: 32px; height: 32px; }
 
-#face.state-found { --accent: #ffd23f; --pop-scale: 1.1; }
+#face.state-found { --accent: var(--gb-darkest); --pop-scale: 1.1; }
 #face.state-found .eye { transform: scale(var(--pop-scale)); }
 #face.state-found .pupil { width: 46px; height: 46px; }
 
-#face.state-confused { --accent: #ff5c7a; }
+#face.state-confused { --accent: var(--gb-dark); }
 #face.state-confused .eye { transform: scale(1); }
 #face.state-confused .pupil { width: 30px; height: 30px; }
 
-#face.state-surprised { --accent: #7ff0ff; --pop-scale: 1.18; }
+#face.state-surprised { --accent: var(--gb-darkest); --pop-scale: 1.18; }
 #face.state-surprised .eye { transform: scale(var(--pop-scale)); }
 #face.state-surprised .pupil { width: 24px; height: 24px; }
 
 /* One-shot "pop" bounce when a state wants a startled entrance (FOUND,
    SURPRISED). Ends at that state's own --pop-scale, so removing the
-   class after it finishes causes no visible jump. */
+   class after it finishes causes no visible jump. steps() gives it a
+   sprite-flip snap instead of a springy bounce. */
 .eye.pop {
-  animation: pop-anim 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: pop-anim 380ms steps(4, end);
 }
 
 @keyframes blink-anim {
@@ -189,10 +215,9 @@ html, body {
 
 #state-label {
   margin-top: 32px;
-  font-size: 13px;
-  letter-spacing: 3px;
+  font-size: 10px;
+  letter-spacing: 2px;
   text-transform: uppercase;
-  opacity: 0.6;
 }
 
 #talk-btn {
@@ -200,19 +225,20 @@ html, body {
   bottom: 28px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 12px 22px;
-  border-radius: 999px;
-  border: 1px solid #333;
-  background: #12141a;
-  color: #cdd6e4;
-  font-size: 14px;
+  padding: 14px 18px;
+  border: 3px solid var(--gb-darkest);
+  background: var(--gb-light);
+  color: var(--gb-darkest);
+  font-family: inherit;
+  font-size: 10px;
   letter-spacing: 1px;
-  opacity: 0.85;
+  box-shadow: 4px 4px 0 var(--gb-darkest); /* flat pixel drop-shadow, no blur */
 }
 
 #talk-btn:active {
-  background: #1c2029;
-  opacity: 1;
+  background: var(--gb-dark);
+  box-shadow: 2px 2px 0 var(--gb-darkest);
+  transform: translateX(-50%) translate(2px, 2px);
 }
 
 #camera-switch-btn {
@@ -221,15 +247,15 @@ html, body {
   right: 16px;
   width: 40px;
   height: 40px;
-  border-radius: 50%;
-  border: 1px solid #333;
-  background: #12141a;
-  color: #cdd6e4;
-  font-size: 18px;
-  opacity: 0.85;
+  border: 3px solid var(--gb-darkest);
+  background: var(--gb-light);
+  color: var(--gb-darkest);
+  font-size: 16px;
+  box-shadow: 3px 3px 0 var(--gb-darkest);
 }
 
 #camera-switch-btn:active {
-  background: #1c2029;
-  opacity: 1;
+  background: var(--gb-dark);
+  box-shadow: 1px 1px 0 var(--gb-darkest);
+  transform: translate(2px, 2px);
 }
