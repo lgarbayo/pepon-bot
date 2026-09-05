@@ -19,6 +19,10 @@ the above together for a future voice Agent to read. Anything Pepon
 as an Action and carried out by an ActionExecutor — today PhoneExecutor,
 rendering over this same WebSocket; a future hardware executor would
 plug in without changing any of the code that produces actions.
+Voice: the phone does STT (Web Speech API) and sends recognized text
+over the WebSocket; intent.parse() turns it into a structured intent
+(deterministic, no LLM) and Agent maps that to Action(s) using
+WorldState.
 """
 import asyncio
 import json
@@ -39,7 +43,9 @@ from PIL import Image
 from pydantic import BaseModel
 
 import actions
+import intent
 from actions import Action, ActionType, PhoneExecutor
+from agent import Agent
 from perception import PerceptionService
 from proprioception import MotionClassifier
 from tracking import PersonTracker
@@ -63,19 +69,16 @@ class PeponState(str, Enum):
     SURPRISED = "SURPRISED"
 
 
-current_state: PeponState = PeponState.IDLE
 connections: Set[WebSocket] = set()
-world_state = WorldState()
+world_state = WorldState()  # single source of truth for Pepon's current state (world_state.pepon_state)
 
 
 async def _set_pepon_state(new_state: PeponState) -> None:
-    """Single choke point for changing Pepon's state: keeps world_state
-    in sync and renders it as a SET_EXPRESSION action, so callers can't
-    update one without the other."""
-    global current_state
-    current_state = new_state
-    world_state.set_pepon_state(current_state.value)
-    await action_executor.execute(actions.set_expression(current_state.value))
+    """Single choke point for changing Pepon's state: updates
+    world_state and renders it as a SET_EXPRESSION action together, so
+    callers can't update one without the other."""
+    world_state.set_pepon_state(new_state.value)
+    await action_executor.execute(actions.set_expression(new_state.value))
 
 
 class FrameStats:
@@ -158,6 +161,7 @@ async def _detection_loop():
         last_detection_at = time.time()
         world_state.update_detections(last_detections)
         await broadcast({"type": "detections", "objects": last_detections})
+        await agent.check_active_target()
 
         gaze = person_tracker.update(last_detections)
         if gaze is not None:
@@ -178,7 +182,7 @@ async def debug_page():
 async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     connections.add(websocket)
-    await websocket.send_json({"type": "state", "value": current_state.value})
+    await websocket.send_json({"type": "state", "value": world_state.pepon_state})
     try:
         while True:
             message = await websocket.receive()
@@ -200,8 +204,13 @@ async def _handle_text_message(text: str) -> None:
         payload = json.loads(text)
     except ValueError:
         return
-    if payload.get("type") == "motion":
+    msg_type = payload.get("type")
+    if msg_type == "motion":
         await _handle_motion(payload)
+    elif msg_type == "wake_word":
+        await _handle_wake_word()
+    elif msg_type == "voice_command":
+        await _handle_voice_command(payload.get("text", ""))
 
 
 async def _handle_motion(payload: dict) -> None:
@@ -216,12 +225,23 @@ async def _handle_motion(payload: dict) -> None:
         await broadcast({"type": "dizzy"})
     elif event == "PHONE_PICKED_UP":
         await _set_pepon_state(PeponState.SURPRISED)
-    elif event == "PHONE_STABLE" and current_state in (PeponState.CONFUSED, PeponState.SURPRISED):
+    elif event == "PHONE_STABLE" and world_state.pepon_state in (PeponState.CONFUSED, PeponState.SURPRISED):
         # Only clear reactions we caused ourselves — don't stomp on a state
-        # a future voice Agent might have set (e.g. LISTENING).
+        # the voice Agent might have set (e.g. LISTENING, SEARCHING).
         await _set_pepon_state(PeponState.IDLE)
     # PHONE_TILTED: informational only for v0.1 — a phone tilts constantly
     # while just being held, so we don't force a face reaction on it here.
+
+
+async def _handle_wake_word() -> None:
+    await _set_pepon_state(PeponState.LISTENING)
+
+
+async def _handle_voice_command(text: str) -> None:
+    if not text:
+        return
+    parsed = intent.parse(text)
+    await agent.handle(parsed)
 
 
 def _ingest_frame(data: bytes) -> None:
@@ -259,12 +279,12 @@ class StateUpdate(BaseModel):
 @app.post("/api/state")
 async def set_state(update: StateUpdate):
     await _set_pepon_state(update.state)
-    return {"ok": True, "state": current_state.value}
+    return {"ok": True, "state": world_state.pepon_state}
 
 
 @app.get("/api/state")
 async def get_state():
-    return {"state": current_state.value}
+    return {"state": world_state.pepon_state}
 
 
 @app.get("/api/motion")
@@ -306,6 +326,27 @@ async def trigger_blink():
     return {"ok": True}
 
 
+@app.get("/api/intent/parse")
+async def parse_intent(text: str):
+    """Read-only: run the IntentParser without triggering the Agent —
+    for iterating on intent.py's patterns without side effects."""
+    return intent.parse(text)
+
+
+class VoiceCommand(BaseModel):
+    text: str
+
+
+@app.post("/api/voice_command")
+async def post_voice_command(cmd: VoiceCommand):
+    """Full pipeline for manual testing without needing the phone's mic:
+    text -> IntentParser -> Agent -> Action(s). Mirrors exactly what the
+    phone sends after hearing the wake word."""
+    parsed = intent.parse(cmd.text)
+    await agent.handle(parsed)
+    return {"intent": parsed}
+
+
 @app.post("/api/action")
 async def post_action(payload: Dict[str, Any]):
     """Generic action trigger for manual testing — accepts exactly the
@@ -331,6 +372,7 @@ async def broadcast(payload: dict):
 
 
 action_executor = PhoneExecutor(broadcast)
+agent = Agent(world_state, action_executor)
 
 
 def _lan_ip() -> str:

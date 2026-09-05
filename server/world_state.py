@@ -32,6 +32,7 @@ class ObjectMemory:
     visible: bool = False
     confidence: float = 0.0
     x: float = 0.0
+    y: float = 0.0
     position: str = POSITION_CENTER
     last_seen_at: Optional[float] = None
 
@@ -71,6 +72,7 @@ class WorldState:
             memory.visible = True
             memory.confidence = det["confidence"]
             memory.x = det["x"]
+            memory.y = det["y"]
             memory.position = position_from_x(det["x"])
             memory.last_seen_at = time.time()
 

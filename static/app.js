@@ -133,6 +133,11 @@ function speakText(text) {
   speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
+function sendJSON(obj) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify(obj));
+}
+
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   ws = new WebSocket(`${proto}://${location.host}/ws`);
@@ -320,13 +325,8 @@ async function startMotionSensors() {
 }
 
 function sendMotionSample() {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
   if (!latestAccelGravity && !latestOrientation) return; // nothing to report yet
-  ws.send(JSON.stringify({
-    type: 'motion',
-    accel_gravity: latestAccelGravity,
-    orientation: latestOrientation,
-  }));
+  sendJSON({ type: 'motion', accel_gravity: latestAccelGravity, orientation: latestOrientation });
 }
 
 // iOS needs this triggered from a user gesture; a tap anywhere on the
@@ -336,3 +336,95 @@ if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.request
 } else {
   startMotionSensors();
 }
+
+// ---------- Voice interaction (wake word + commands) ----------
+// STT happens entirely in the browser via the Web Speech API — no audio
+// streaming to the backend, no server-side model. Chrome's recognizer is
+// cloud-backed even though it's "the browser" (needs real internet, not
+// just LAN), which is the tradeoff for by far the fastest path to a
+// working demo: zero new dependencies, reuses the existing WS text
+// channel, deterministic IntentParser + Agent on the backend do the
+// actual reasoning about what the words mean.
+//
+// Flow: continuously listen for the wake word "Pepon" -> send
+// {type:"wake_word"}, then treat the next recognized phrase as the
+// command -> send {type:"voice_command", text}. Also handles "Pepon,
+// <command>" said in one breath.
+
+const WAKE_WORD = 'pepon';
+const COMMAND_TIMEOUT_MS = 6000; // give up waiting for a command after this long
+
+let recognition = null;
+let awaitingWakeWord = true;
+let commandTimeout = null;
+let voiceEnabled = true; // flipped off if mic permission is denied
+
+function startVoiceRecognition() {
+  const SpeechRecognitionImpl = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognitionImpl) {
+    console.warn('SpeechRecognition unsupported on this browser');
+    return;
+  }
+
+  recognition = new SpeechRecognitionImpl();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+
+  recognition.onresult = (event) => {
+    const result = event.results[event.results.length - 1];
+    if (result.isFinal) {
+      handleTranscript(result[0].transcript);
+    }
+  };
+
+  recognition.onerror = (event) => {
+    if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+      console.warn('Microphone permission denied for voice commands');
+      voiceEnabled = false;
+    }
+    // other errors (no-speech, network, aborted, ...) just fall through
+    // to onend, which restarts the recognizer.
+  };
+
+  recognition.onend = () => {
+    // Chrome stops the recognizer periodically even in continuous mode —
+    // keep it alive for as long as we're allowed to listen.
+    if (voiceEnabled) {
+      setTimeout(() => recognition.start(), 250);
+    }
+  };
+
+  recognition.start();
+}
+
+function handleTranscript(rawText) {
+  const text = rawText.trim();
+  const lower = text.toLowerCase();
+
+  if (awaitingWakeWord) {
+    const wakeIndex = lower.indexOf(WAKE_WORD);
+    if (wakeIndex === -1) return; // not for us
+
+    sendJSON({ type: 'wake_word' });
+
+    // Handle "Pepon, what do you see?" said as a single phrase.
+    const rest = text.slice(wakeIndex + WAKE_WORD.length).replace(/^[,.\s]+/, '');
+    if (rest.length > 2) {
+      sendJSON({ type: 'voice_command', text: rest });
+      awaitingWakeWord = true;
+      return;
+    }
+
+    awaitingWakeWord = false;
+    clearTimeout(commandTimeout);
+    commandTimeout = setTimeout(() => { awaitingWakeWord = true; }, COMMAND_TIMEOUT_MS);
+    return;
+  }
+
+  clearTimeout(commandTimeout);
+  awaitingWakeWord = true;
+  sendJSON({ type: 'voice_command', text });
+}
+
+startVoiceRecognition();

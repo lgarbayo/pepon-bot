@@ -60,6 +60,26 @@
     overflow-x: auto;
     max-width: 640px;
   }
+  #voice-form { margin-top: 8px; display: flex; gap: 8px; max-width: 640px; }
+  #voice-text {
+    flex: 1;
+    background: #12141a;
+    border: 1px solid #222;
+    border-radius: 6px;
+    color: #cdd6e4;
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+  #voice-form button {
+    background: #33e0a1;
+    color: #0b0e14;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  #voice-result { margin-top: 8px; font-size: 12px; opacity: 0.8; white-space: pre-wrap; }
 </style>
 </head>
 <body>
@@ -83,6 +103,13 @@
 
   <h1 style="margin-top:24px;">WORLD STATE</h1>
   <pre id="world-state">-</pre>
+
+  <h1 style="margin-top:24px;">VOICE COMMAND (manual test, no mic needed)</h1>
+  <form id="voice-form">
+    <input id="voice-text" type="text" placeholder="e.g. Find the bottle" autocomplete="off">
+    <button type="submit">Send</button>
+  </form>
+  <div id="voice-result"></div>
 
   <script>
     const img = document.getElementById('frame');
@@ -188,6 +215,20 @@
       const world = await res.json();
       document.getElementById('world-state').textContent = JSON.stringify(world, null, 2);
     }
+
+    document.getElementById('voice-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('voice-text');
+      const text = input.value.trim();
+      if (!text) return;
+      const res = await fetch('/api/voice_command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      document.getElementById('voice-result').textContent = JSON.stringify(data.intent, null, 2);
+    });
 
     setInterval(refreshFrame, 300);
     setInterval(refreshStats, 500);
