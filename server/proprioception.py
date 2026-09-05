@@ -28,6 +28,11 @@ class MotionClassifier:
         self._deltas: deque = deque()  # (timestamp, delta) for the shake window
         self._last_phase = "STABLE"
 
+    @property
+    def phase(self) -> str:
+        """Current classified phase (STABLE/TILTED/PICKED_UP/SHAKEN)."""
+        return self._last_phase
+
     def update(self, accel_gravity: Optional[dict], orientation: Optional[dict]) -> Optional[str]:
         """Feed one sample. Returns "PHONE_<PHASE>" only on a phase
         transition, else None. Missing sensors degrade gracefully —

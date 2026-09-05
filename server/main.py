@@ -11,7 +11,10 @@ A PersonTracker turns those detections into a smoothed look_at
 target so the eyes follow a person without jitter or target-hopping.
 A MotionClassifier reads accelerometer/orientation samples pushed by
 the phone (text WebSocket messages) and reacts to PHONE_SHAKEN /
-PHONE_PICKED_UP / PHONE_STABLE with a state change.
+PHONE_PICKED_UP / PHONE_STABLE with a state change. A WorldState
+keeps the small amount of short-term memory (visible objects, last
+known positions, Pepon's own state, phone motion) that ties all of
+the above together for a future voice Agent to read.
 """
 import asyncio
 import json
@@ -34,6 +37,7 @@ from pydantic import BaseModel
 from perception import PerceptionService
 from proprioception import MotionClassifier
 from tracking import PersonTracker
+from world_state import WorldState
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -55,6 +59,17 @@ class PeponState(str, Enum):
 
 current_state: PeponState = PeponState.IDLE
 connections: Set[WebSocket] = set()
+world_state = WorldState()
+
+
+async def _set_pepon_state(new_state: PeponState) -> None:
+    """Single choke point for changing Pepon's state: keeps world_state
+    in sync and broadcasts to the phone, so callers can't update one
+    without the other."""
+    global current_state
+    current_state = new_state
+    world_state.set_pepon_state(current_state.value)
+    await broadcast({"type": "state", "value": current_state.value})
 
 
 class FrameStats:
@@ -111,8 +126,6 @@ last_detections: list = []
 last_detection_at: Optional[float] = None
 person_tracker = PersonTracker()
 motion_classifier = MotionClassifier()
-last_motion_event: Optional[str] = None
-last_motion_event_at: Optional[float] = None
 
 
 @app.on_event("startup")
@@ -137,6 +150,7 @@ async def _detection_loop():
             continue
         last_detections = [d.as_dict() for d in detections]
         last_detection_at = time.time()
+        world_state.update_detections(last_detections)
         await broadcast({"type": "detections", "objects": last_detections})
 
         gaze = person_tracker.update(last_detections)
@@ -185,26 +199,21 @@ async def _handle_text_message(text: str) -> None:
 
 
 async def _handle_motion(payload: dict) -> None:
-    global current_state, last_motion_event, last_motion_event_at
     event = motion_classifier.update(payload.get("accel_gravity"), payload.get("orientation"))
     if event is None:
         return
-    last_motion_event = event
-    last_motion_event_at = time.time()
+    world_state.set_phone_motion(motion_classifier.phase, event)
     await broadcast({"type": "motion_event", "event": event})
 
     if event == "PHONE_SHAKEN":
-        current_state = PeponState.CONFUSED
-        await broadcast({"type": "state", "value": current_state.value})
+        await _set_pepon_state(PeponState.CONFUSED)
         await broadcast({"type": "dizzy"})
     elif event == "PHONE_PICKED_UP":
-        current_state = PeponState.SURPRISED
-        await broadcast({"type": "state", "value": current_state.value})
+        await _set_pepon_state(PeponState.SURPRISED)
     elif event == "PHONE_STABLE" and current_state in (PeponState.CONFUSED, PeponState.SURPRISED):
         # Only clear reactions we caused ourselves — don't stomp on a state
         # a future voice Agent might have set (e.g. LISTENING).
-        current_state = PeponState.IDLE
-        await broadcast({"type": "state", "value": current_state.value})
+        await _set_pepon_state(PeponState.IDLE)
     # PHONE_TILTED: informational only for v0.1 — a phone tilts constantly
     # while just being held, so we don't force a face reaction on it here.
 
@@ -243,9 +252,7 @@ class StateUpdate(BaseModel):
 
 @app.post("/api/state")
 async def set_state(update: StateUpdate):
-    global current_state
-    current_state = update.state
-    await broadcast({"type": "state", "value": current_state.value})
+    await _set_pepon_state(update.state)
     return {"ok": True, "state": current_state.value}
 
 
@@ -256,7 +263,21 @@ async def get_state():
 
 @app.get("/api/motion")
 async def get_motion():
-    return {"last_event": last_motion_event, "last_event_at": last_motion_event_at}
+    return {
+        "phase": world_state.phone_motion_phase,
+        "last_event": world_state.last_motion_event,
+        "last_event_at": world_state.last_motion_event_at,
+    }
+
+
+@app.get("/api/world")
+async def get_world():
+    return world_state.as_dict()
+
+
+@app.get("/api/world/describe/{cls}")
+async def describe_object(cls: str):
+    return {"class": cls, "text": world_state.describe(cls)}
 
 
 class LookAt(BaseModel):

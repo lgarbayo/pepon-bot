@@ -51,6 +51,15 @@
   #detections { margin-top: 16px; font-size: 13px; }
   #detections div { padding: 3px 0; }
   .cls { color: #33e0a1; font-weight: bold; }
+  #world-state {
+    font-size: 12px;
+    background: #12141a;
+    border: 1px solid #222;
+    border-radius: 8px;
+    padding: 12px;
+    overflow-x: auto;
+    max-width: 640px;
+  }
 </style>
 </head>
 <body>
@@ -71,6 +80,9 @@
   </table>
 
   <div id="detections">no detections yet</div>
+
+  <h1 style="margin-top:24px;">WORLD STATE</h1>
+  <pre id="world-state">-</pre>
 
   <script>
     const img = document.getElementById('frame');
@@ -171,14 +183,22 @@
         : 'none yet';
     }
 
+    async function refreshWorld() {
+      const res = await fetch('/api/world');
+      const world = await res.json();
+      document.getElementById('world-state').textContent = JSON.stringify(world, null, 2);
+    }
+
     setInterval(refreshFrame, 300);
     setInterval(refreshStats, 500);
     setInterval(refreshDetections, 400);
     setInterval(refreshMotion, 500);
+    setInterval(refreshWorld, 500);
     refreshFrame();
     refreshStats();
     refreshDetections();
     refreshMotion();
+    refreshWorld();
   </script>
 </body>
 </html>
