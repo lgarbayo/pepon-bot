@@ -1,67 +1,79 @@
 # Pepón
 
-Robot de escritorio: el móvil aporta cámara, micrófono, pantalla, altavoz y sensores; el PC ejecuta FastAPI, YOLO, Whisper y Gemma mediante Ollama.
+Desktop robot: the phone provides camera, microphone, screen, speaker and sensors; the PC runs FastAPI, YOLO, Whisper and Gemma via Ollama.
 
-## Arranque
+## Starting it up
 
 ```sh
-# En una terminal, si Ollama no está ya activo:
+# In one terminal, if Ollama isn't already running:
 ollama serve
 
-# En otra terminal:
+# In another terminal:
 cd /home/lgarbayo/pepon-bot/server
 python3 main.py
 ```
 
-Abre `https://<IP-LAN>:8000` en el móvil y acepta el certificado local. `/debug` muestra cámara, memoria, voz, encargos y avisos. La primera pulsación desbloquea el audio del navegador.
+Open `https://<LAN-IP>:8000` on the phone and accept the local certificate. `/debug` shows the camera, memory, voice, watches and pending notifications. The first tap unlocks the browser's audio.
 
-## Conversación y controles
+## Conversation and controls
 
-- Toca la esfera para conversar. El micro se mantiene abierto durante esa sesión; termina cada frase tras aproximadamente **700 ms de silencio**, sin pulsar para enviarla. Conserva hasta 420 ms previos a la detección del inicio. Las frases se limitan a 20 segundos para acotar memoria y peticiones.
-- Las barras reflejan el volumen real del micro. La esfera distingue escucha, procesamiento, respuesta y error. Las respuestas también aparecen escritas.
-- Puedes interrumpir una respuesta hablando. La captura pide cancelación de eco y exige voz sostenida más intensa mientras suena Pepón. Es una detección energética adaptativa: ruido fuerte o eco residual pueden confundirse con voz; requiere ajustar/verificar en el Redmi real.
-- Toca de nuevo para terminar: cierra las pistas del micro y el AudioContext, cancela la petición y el habla, y descarta las respuestas tardías. También lo hace al ocultar la página o perder el WebSocket.
-- En el menú **PEPÓN** puedes activar el modo tranquilo, ver encargos y cancelarlos. El modo tranquilo desactiva los comentarios espontáneos; conserva las respuestas y avisos solicitados.
+- Tap the orb to talk. The mic stays open for that session; each phrase ends after roughly **700ms of silence**, with no need to tap to send it. It keeps up to 420ms of audio from before speech onset. Phrases are capped at 20 seconds to bound memory and requests.
+- The bars reflect the mic's real volume. The orb distinguishes listening, processing, replying and error. Replies are also shown as text.
+- You can interrupt a reply by talking. Capture requests echo cancellation and requires louder, sustained speech while Pepón is talking. It's an adaptive energy-based detector: loud noise or residual echo can be mistaken for speech; this needs tuning/checking on the real Redmi.
+- Tap again to end: it stops the mic tracks and the AudioContext, cancels the in-flight request and speech, and discards late replies. It also does this when the page is hidden or the WebSocket drops.
+- The **PEPÓN** menu lets you toggle quiet mode and view/cancel watches. Quiet mode disables unprompted remarks; it keeps requested replies and notifications.
 
-La captura utiliza [AudioWorklet](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor), procesado local y WAV mono. Whisper sigue siendo el único transcriptor; no se envía audio a un servicio externo. Las animaciones de habla representan el estado de reproducción: el navegador no expone el audio de `speechSynthesis` al medidor del micro.
+Capture uses [AudioWorklet](https://developer.mozilla.org/en-US/docs/Web/API/AudioWorkletProcessor), processed locally, as mono WAV. Whisper is still the only transcriber; no audio is sent to an external service. The speaking animation reflects playback state: the browser doesn't expose `speechSynthesis` audio to the mic meter.
 
-## Ejemplos
+## Examples
 
-| Función | Qué puedes decir |
+| Feature | What you can say |
 | --- | --- |
-| Percepción | «¿Qué ves?», «¿Ves una botella?», «Busca el libro», «Mírame» |
-| Referencias entre turnos | «¿Ves una botella?» → «¿Dónde está?» → «Avísame cuando desaparezca» |
-| Memoria visual | «¿Dónde viste mi taza por última vez?» |
-| Cambios | «¿Qué ha cambiado en la mesa?» |
-| Avisos | «Avísame cuando aparezca alguien», «Vigila si vuelve a estar la taza» |
-| Recordatorios de regreso | «Recuérdame beber agua cuando vuelva» |
-| Gestión | «Qué encargos tienes», «Cancela los avisos de la taza», «Cancela todos los encargos» |
-| Personalidad | «Modo tranquilo», «Modo sociable» |
+| Perception | "What do you see?", "Do you see a bottle?", "Find the book", "Look at me" |
+| Cross-turn references | "Do you see a bottle?" → "Where is it?" → "Tell me when it disappears" |
+| Visual memory | "Where did you last see my cup?" |
+| Changes | "What's changed on the table?" |
+| Watches | "Tell me when someone appears", "Watch for the cup coming back" |
+| Return reminders | "Remind me to drink water when I get back" |
+| Management | "What are you keeping an eye on", "Cancel the cup watches", "Cancel all watches" |
+| Personality | "Quiet mode", "Sociable mode" |
 
-El parser cubre las **80 clases COCO**, sus nombres españoles y sinónimos. Gemma recibe hasta 12 turnos recientes y el estado visual actual para otras preguntas. El referente caduca tras cinco minutos de inactividad y se reinicia al comenzar otra sesión.
+The parser covers all **80 COCO classes**, their Spanish names and synonyms. Gemma receives up to 12 recent turns and the current visual state for other questions. The referent expires after five minutes of inactivity and resets when a new session starts.
 
-## Memoria, avisos y personalidad
+## Conversation scope
 
-- La memoria visual retiene hasta 24 horas de últimas observaciones, con lado y antigüedad. Al reiniciar se restaura como **pasado**, nunca como visibilidad actual.
-- Los cambios se confirman durante al menos un segundo y tres detecciones de fotogramas distintos. La comparación describe cambios de clases y zonas de la imagen durante el último minuto.
-- Cámara obsoleta, desconexión, cambio de cámara o recogida del teléfono reinician la comparación; no se interpretan automáticamente como objetos desaparecidos. Si el móvil se mueve continuamente, la comparación visual puede seguir siendo imprecisa.
-- Hasta 32 encargos de aparición, desaparición o regreso. Son de una sola ejecución, se guardan en disco y pueden cancelarse. Para desaparición se exige haber visto el objeto durante la observación continua; para regreso, una ausencia confirmada de al menos tres segundos antes de reaparecer.
-- Los avisos cumplidos quedan pendientes hasta reproducirse y confirmarse desde el móvil. Si el navegador no tiene audio desbloqueado, aparece **ESCUCHAR AVISO**. La detección requiere PC y cámara activos: no vigila mientras están apagados.
-- En modo sociable puede saludar tras una ausencia observada de al menos 30 segundos y comentar una recogida. No más de un comentario espontáneo cada dos minutos; no interrumpe un turno de voz en curso.
-- Al comenzar a hablar, la mirada se orienta a la persona visible y conserva el seguimiento visual. **No identifica personas ni localiza voces por dirección**: el micrófono mono no permite atribuir con fiabilidad quién habla en un grupo. «Cuando vuelva» significa que vuelve a aparecer una persona en el encuadre.
-- La memoria y los encargos están en `data/companion.json`, excluido de Git. Se escribe mediante reemplazo atómico; la memoria se guarda aproximadamente cada diez segundos y al cerrar. Cada interacción sigue registrándose en `data/episodes/`.
+Gemma is deliberately scoped to what Pepón perceives, not open-ended chit-chat. Its system prompt frames it as "the semantic reasoning module of Pepón" and requires every claim to be grounded in `visible_objects`/`memory`, with short, one-sentence answers. Tested directly against the running server:
 
-Las observaciones corresponden a **clases**, no a identidades: dos tazas no se distinguen como objetos personales. Una localización anterior pertenece al encuadre de entonces; no establece dónde está ahora un objeto fuera de cámara.
+| You say | Pepón answers |
+| --- | --- |
+| "¿Cómo estás?" (How are you?) | "Estoy bien, gracias por preguntar." — small talk works |
+| "Cuéntame un chiste" (Tell me a joke) | "Lo siento, no puedo contar chistes en este momento." — declines |
+| "¿Cuál es la capital de Francia?" (What's the capital of France?) | "Lo siento, no puedo responder preguntas sobre capitales de países." — declines |
 
-## Diagnóstico y verificación
+This is a deliberate trade-off, not a bug: it keeps Pepón focused on being useful about the room instead of drifting into general trivia. Conversation history (up to 12 turns, 5-minute expiry) is used to follow up on questions about what it sees, not to hold an open-ended chat. Widening the system prompt to allow general conversation would be a small, deliberate change — intentionally left as-is for this project.
 
-- `GET /api/health`: servicios locales.
-- `GET /api/world`: memoria, frescura de cámara y cambios confirmados.
-- `GET /api/voice/status`: transcripción, errores, estado de sesiones y resultado de la última consulta semántica (causa de fallo y latencia).
-- `GET /api/assistant`: preferencias, encargos y avisos pendientes.
+## Memory, watches and personality
+
+- Visual memory retains up to 24 hours of recent observations, with side and age. On restart it's restored strictly as **past** observation, never as current visibility.
+- Changes are confirmed over at least one second and three distinct detection frames. The comparison describes class changes and frame-position changes over the last minute.
+- A stale camera, disconnect, camera switch or picking up the phone all reset the comparison; none of these are treated as objects having disappeared. If the phone keeps moving, the visual comparison can stay imprecise.
+- Up to 32 one-shot watches for appearance, disappearance or return. They're persisted to disk and can be cancelled. Disappearance requires having seen the object during continuous observation; return requires a confirmed absence of at least three seconds before it reappears.
+- Fulfilled notifications stay pending until played back and acknowledged from the phone. If the browser's audio isn't unlocked, an **ESCUCHAR AVISO** ("listen to notification") button appears. Detection requires the PC and camera to be active: it doesn't watch while they're off.
+- In sociable mode it can greet you after an observed absence of at least 30 seconds and comment on being picked up. No more than one unprompted remark every two minutes; it never interrupts an ongoing voice turn.
+- When it starts talking, its gaze turns toward the visible person and keeps tracking them. **It doesn't identify individual people or localize voices by direction**: the mono microphone can't reliably attribute who's speaking in a group. "When they get back" means a person reappears in frame.
+- Memory and watches live in `data/companion.json`, gitignored. It's written via atomic replace; memory is saved roughly every ten seconds and on shutdown. Every interaction is still logged to `data/episodes/`.
+
+Observations are per **class**, not identity: two cups aren't tracked as distinct personal objects. A past location belongs to that moment's framing; it doesn't establish where an out-of-frame object is now.
+
+## Diagnostics and verification
+
+- `GET /api/health`: status of local services.
+- `GET /api/world`: memory, camera freshness and confirmed changes.
+- `GET /api/voice/status`: transcript, errors, session state and the last semantic query's outcome (failure cause and latency).
+- `GET /api/assistant`: preferences, watches and pending notifications.
 - `POST /api/assistant/preferences`: `{"quiet": true}`.
-- `DELETE /api/assistant/watches/{id}`: cancelar un encargo.
-- `POST /api/assistant/notifications/{id}/ack`: confirmar un aviso.
+- `DELETE /api/assistant/watches/{id}`: cancel a watch.
+- `POST /api/assistant/notifications/{id}/ack`: acknowledge a notification.
 
 ```sh
 python3 -m pytest server/tests -q
@@ -69,6 +81,6 @@ node static/tests/voice-vad.test.cjs
 python3 static/tests/browser_checks.py
 ```
 
-La última comprobación necesita Playwright y Chromium instalados. Usa un AudioWorklet real con señal sintética y simula HTTP, WebSocket y síntesis de voz: comprueba captura, WAV, interrupción, permisos tardíos, cierre del micro, errores, accesibilidad y tamaños de pantalla. No sustituye una prueba acústica con el Redmi, especialmente para eco y ruido ambiente.
+The last check needs Playwright and Chromium installed. It drives a real AudioWorklet with a synthetic signal and mocks HTTP, WebSocket and speech synthesis: it checks capture, WAV delivery, interruption, late permissions, mic release, errors, accessibility and screen sizes. It doesn't replace an acoustic test on the real Redmi, especially for echo and ambient noise.
 
-Las consultas de Gemma disponen de 20 segundos por petición y 35 segundos en total (`GEMMA_TIMEOUT_SECONDS`, `GEMMA_TOTAL_TIMEOUT_SECONDS`), para admitir el arranque de la visión. Los fallos de servicio o de espera se distinguen de una pregunta no comprendida; `/debug` muestra el detalle técnico.
+Gemma queries get 20 seconds per request and 35 seconds total (`GEMMA_TIMEOUT_SECONDS`, `GEMMA_TOTAL_TIMEOUT_SECONDS`), to allow for vision cold-start. Service failures and timeouts are reported distinctly from "didn't understand the question"; `/debug` shows the technical detail.
