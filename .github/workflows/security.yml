@@ -19,7 +19,7 @@ jobs:
       security-events: write
       id-token: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ossf/scorecard-action@55891bbd73f2425e97637d96e306fc9d491d0b21 # v2.4.4
         with:
           results_file: results.sarif
@@ -37,7 +37,7 @@ jobs:
       matrix:
         language: [python, javascript]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: github/codeql-action/init@6f5948dfacef28e207b48d0905cf90c03365536d # v3
         with:
           languages: ${{ matrix.language }}
