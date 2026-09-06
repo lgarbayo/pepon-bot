@@ -99,12 +99,16 @@
     <tr><td class="label">last motion event</td><td id="stat-motion">-</td></tr>
     <tr><td class="label">last voice heard</td><td id="stat-voice-heard">-</td></tr>
     <tr><td class="label">last voice error</td><td id="stat-voice-error">-</td></tr>
+    <tr><td class="label">last semantic response</td><td id="stat-semantic">-</td></tr>
   </table>
 
   <div id="detections">no detections yet</div>
 
   <h1 style="margin-top:24px;">WORLD STATE</h1>
   <pre id="world-state">-</pre>
+
+  <h1 style="margin-top:24px;">COMPANION — ENCARGOS Y AVISOS</h1>
+  <pre id="companion-state" style="white-space:pre-wrap;max-width:640px;font-size:12px;"></pre>
 
   <h1 style="margin-top:24px;">VOICE COMMAND (manual test, no mic needed)</h1>
   <form id="voice-form">
@@ -125,6 +129,7 @@
       const res = await fetch(`/api/camera/frame.jpg?t=${Date.now()}`);
       if (res.ok) {
         const blob = await res.blob();
+        if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
         img.src = URL.createObjectURL(blob);
         img.style.display = 'block';
         placeholder.style.display = 'none';
@@ -223,12 +228,19 @@
         ? `${v.last_error.error} (${Math.round((Date.now() / 1000) - v.last_error.at)}s ago)`
         : 'none';
       errEl.className = v.last_error ? 'stale' : '';
+      const semantic = document.getElementById('stat-semantic');
+      semantic.textContent = v.semantic
+        ? `${v.semantic.ok ? 'OK' : v.semantic.error} (${v.semantic.latency_ms} ms)`
+        : 'no semantic query yet';
+      semantic.className = v.semantic ? (v.semantic.ok ? 'fresh' : 'stale') : '';
     }
 
     async function refreshWorld() {
       const res = await fetch('/api/world');
       const world = await res.json();
       document.getElementById('world-state').textContent = JSON.stringify(world, null, 2);
+      const companion = await (await fetch('/api/assistant')).json();
+      document.getElementById('companion-state').textContent = JSON.stringify(companion, null, 2);
     }
 
     document.getElementById('voice-form').addEventListener('submit', async (e) => {
@@ -242,7 +254,7 @@
         body: JSON.stringify({ text }),
       });
       const data = await res.json();
-      document.getElementById('voice-result').textContent = JSON.stringify(data.intent, null, 2);
+      document.getElementById('voice-result').textContent = JSON.stringify(data, null, 2);
     });
 
     setInterval(refreshFrame, 300);

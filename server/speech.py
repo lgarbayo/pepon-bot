@@ -1,14 +1,6 @@
-"""Speech-to-text — runs entirely on the backend so voice input works
-from any browser (getUserMedia + MediaRecorder are near-universal,
-unlike the Web Speech API's SpeechRecognition, which only Chromium
-implements) and so the phone's microphone only opens for as long as a
-push-to-talk clip is actually being recorded, instead of the
-open/close cycle Chrome's continuous recognizer used to do.
-
-Wraps faster-whisper behind a small interface, same pattern as
-PerceptionService for YOLO: the rest of the app never touches
-faster-whisper/ctranslate2 directly, so the model can be swapped later
-without changing any caller.
+"""Local Whisper transcription for pause-delimited PCM/WAV utterances.
+The phone's AudioWorklet handles capture and voice activity; this service
+also accepts older MediaRecorder containers through PyAV decoding.
 """
 import io
 from typing import BinaryIO, Union
@@ -41,6 +33,6 @@ class SpeechService:
         segments, _info = self._model.transcribe(
             buffer,
             language=config.WHISPER_LANGUAGE,
-            vad_filter=True,  # trims the silence a push-to-talk clip starts/ends with
+            vad_filter=True,  # second pass: discard remaining silence before transcription
         )
         return " ".join(segment.text.strip() for segment in segments).strip()

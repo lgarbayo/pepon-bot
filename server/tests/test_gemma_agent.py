@@ -154,6 +154,86 @@ def test_disabled_agent_never_calls_ollama():
     assert called is False
 
 
+
+
+def test_schema_requires_complete_decisions_and_only_known_targets():
+    async def run():
+        agent = GemmaAgent(enabled=True)
+        reply = _chat_response('{"action":"SPEAK","target":null,"text":"Veo una botella que puede servir como recipiente."}')
+        post = AsyncMock(return_value=reply)
+        with patch.object(agent._client, 'post', post):
+            result = await agent.decide('¿Ves algo por donde yo pueda beber?', _world_with_bottle())
+        assert result.action == 'SPEAK'
+        schema = post.call_args.kwargs['json']['format']
+        assert set(schema['required']) == {'action', 'target', 'text'}
+        assert schema['properties']['target']['enum'] == ['bottle', None]
+        assert agent.last_status['ok']
+        await agent.aclose()
+    asyncio.run(run())
+
+
+def test_incomplete_action_retries_then_answers_semantic_question():
+    async def run():
+        agent = GemmaAgent(enabled=True)
+        post = AsyncMock(side_effect=[
+            _chat_response('{"action":"SEARCH_OBJECT"}'),
+            _chat_response('{"action":"SPEAK","target":null,"text":"Puedes usar la botella que veo."}'),
+        ])
+        with patch.object(agent._client, 'post', post):
+            result = await agent.decide('¿Ves algo por donde yo pueda beber?', _world_with_bottle())
+        assert result.text == 'Puedes usar la botella que veo.'
+        assert post.call_count == 2
+        await agent.aclose()
+    asyncio.run(run())
+
+
+def test_timeout_is_not_reported_as_misunderstanding():
+    async def run():
+        agent = GemmaAgent(enabled=True)
+        post = AsyncMock(side_effect=httpx.ReadTimeout('cold vision model'))
+        with patch.object(agent._client, 'post', post):
+            result = await agent.decide('¿Ves algo por donde yo pueda beber?', _world_with_bottle(), frame_jpeg=b'jpeg')
+        assert 'tardando demasiado' in result.text
+        assert not agent.last_status['ok']
+        assert agent.last_status['error'].startswith('ollama timeout')
+        assert post.call_count == 1
+        await agent.aclose()
+    asyncio.run(run())
+
+
+def test_http_failure_keeps_diagnostic_without_speaking_server_error():
+    async def run():
+        agent = GemmaAgent(enabled=True)
+        request = httpx.Request('POST', 'http://localhost:11434/api/chat')
+        post = AsyncMock(return_value=httpx.Response(500, json={'error': 'image encoder unavailable'}, request=request))
+        with patch.object(agent._client, 'post', post):
+            result = await agent.decide('¿Ves la taza?', _world_with_bottle())
+        assert 'no está disponible' in result.text
+        assert 'image encoder unavailable' in agent.last_status['error']
+        assert 'image encoder' not in result.text
+        assert post.call_count == 1
+        await agent.aclose()
+    asyncio.run(run())
+
+
+def test_speak_without_text_is_rejected():
+    decision, error = GemmaAgent._parse_and_validate(_chat_response('{"action":"SPEAK","target":null,"text":null}'), set())
+    assert decision is None
+    assert 'nonempty text' in error
+
+
+def test_total_budget_bounds_semantic_response():
+    async def run():
+        agent = GemmaAgent(enabled=True)
+        async def delayed(*args, **kwargs):
+            await asyncio.sleep(1)
+        with patch.object(agent._client, 'post', delayed), patch('config.GEMMA_TOTAL_TIMEOUT_SECONDS', .01):
+            result = await agent.decide('algo para beber', _world_with_bottle())
+        assert 'tardando demasiado' in result.text
+        await agent.aclose()
+    asyncio.run(run())
+
+
 if __name__ == "__main__":
     import inspect
     failures = 0

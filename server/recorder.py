@@ -19,6 +19,7 @@ Layout per episode (data/episodes/episode_000001/):
 import asyncio
 import json
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -43,10 +44,22 @@ class EpisodeRecorder:
         self._queue: "asyncio.Queue[tuple]" = asyncio.Queue()
         self._open: Dict[str, _OpenEpisode] = {}
         self._next_id = self._infer_next_id()
+        self._task = None
 
     def start(self) -> None:
         """Launch the background writer. Call once at app startup."""
-        asyncio.create_task(self._worker())
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._worker())
+
+    async def stop(self) -> None:
+        """Flush pending episode writes before stopping the background worker."""
+        if self._task is None:
+            return
+        await self._queue.join()
+        self._task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._task
+        self._task = None
 
     def _infer_next_id(self) -> int:
         numbers = []
@@ -144,6 +157,8 @@ class EpisodeRecorder:
                 await asyncio.to_thread(self._perform, op, path, payload)
             except Exception as exc:
                 print(f"[recorder] write failed ({op} {path}): {exc}")
+            finally:
+                self._queue.task_done()
 
     @staticmethod
     def _perform(op: str, path: Path, payload) -> None:

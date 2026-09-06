@@ -15,7 +15,20 @@
     <span id="status-text">CONNECTING...</span>
   </div>
 
-  <button id="camera-switch-btn" type="button">🔄</button>
+  <button id="camera-switch-btn" type="button" aria-label="Cambiar cámara" title="Cambiar cámara">
+    <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" shape-rendering="crispEdges">
+      <path class="camera-body" d="M4 10h6V6h12v4h6v16H4z" />
+      <path class="camera-arrows" d="M11 16h10l-3-3m3 7H11l3 3" />
+    </svg>
+  </button>
+
+  <details id="companion-panel">
+    <summary>PEPÓN <span id="watch-count">0 ENCARGOS</span></summary>
+    <label><input id="quiet-toggle" type="checkbox"> MODO TRANQUILO</label>
+    <p>Sin saludos espontáneos. Tus avisos siguen activos.</p>
+    <ul id="watch-list"></ul>
+  </details>
+  <button id="notice-btn" type="button" hidden>ESCUCHAR AVISO</button>
 
   <div id="face" class="state-idle">
     <div class="eye" id="eye-left">
@@ -35,8 +48,24 @@
   </div>
 
   <div id="state-label">IDLE</div>
+  <div id="speech-caption" aria-live="polite"></div>
 
-  <button id="talk-btn" type="button" aria-label="Hablar con Pepon">🎤</button>
+  <div id="voice-control">
+    <button id="talk-btn" type="button" aria-label="Hablar con Pepon" aria-pressed="false" aria-describedby="talk-hint">
+      <span class="voice-orb" aria-hidden="true">
+        <svg class="orb-shell" viewBox="0 0 80 80" focusable="false" shape-rendering="crispEdges">
+          <path class="orb-body" d="M28 4h24v4h12v8h8v12h4v24h-4v12h-8v8H52v4H28v-4H16v-8H8V52H4V28h4V16h8V8h12z" />
+          <path class="orb-shade" d="M68 28h8v24h-4v12h-8v8H52v4H28v-4H16v-8H8V52h8v8h12v4h24v-4h8V48h4V36h4z" />
+          <path class="orb-glint" d="M24 12h28v4H24zm-8 8h8v4h-8zm-4 8h4v8h-4z" />
+        </svg>
+        <span class="orb-wave">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </span>
+      </span>
+    </button>
+    <span id="talk-hint" aria-live="polite">TOCA PARA HABLAR</span>
+    <span id="voice-status" role="status"></span>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

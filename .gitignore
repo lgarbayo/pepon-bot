@@ -6,3 +6,8 @@ certs/
 data/*.jsonl
 data/episodes/
 *.pt
+
+data/companion.json
+data/companion.tmp
+.pytest_cache/
+data/*.log

@@ -1,44 +1,20 @@
-"""PeponBot backend — WebSocket link + state broadcast + camera ingest
-+ object detection.
+"""PeponBot: HTTPS phone UI, fresh camera perception and local voice.
 
-FastAPI serves the phone UI, holds a Pepon state (IDLE / LISTENING /
-THINKING / SEARCHING / FOUND / CONFUSED), pushes state/look_at/blink
-messages to the phone, receives a live JPEG frame stream from the
-phone's camera over the same WebSocket (binary messages), and
-periodically runs object detection on the latest frame via
-PerceptionService — broadcasting detections back over the WebSocket.
-A PersonTracker turns those detections into a smoothed look_at
-target so the eyes follow a person without jitter or target-hopping.
-A MotionClassifier reads accelerometer/orientation samples pushed by
-the phone (text WebSocket messages) and reacts to PHONE_SHAKEN /
-PHONE_PICKED_UP / PHONE_STABLE with a state change. A WorldState
-keeps the small amount of short-term memory (visible objects, last
-known positions, Pepon's own state, phone motion) that ties all of
-the above together for a future voice Agent to read. Anything Pepon
-*does* (look somewhere, speak, change expression, ...) is expressed
-as an Action and carried out by an ActionExecutor — today PhoneExecutor,
-rendering over this same WebSocket; a future hardware executor would
-plug in without changing any of the code that produces actions.
-Voice: STT runs entirely on the backend via SpeechService (local
-Whisper), not the browser — the phone only captures audio (getUserMedia
-+ MediaRecorder, works on any browser). One tap on the phone's talk
-button starts a conversation: app.js repeatedly POSTs rolling clips
-straight to /api/voice/audio, which transcribes AND runs the full
-pipeline on each one (an active conversation already means "act on
-this" — no wake word needed per turn). The resulting text goes through
-intent.parse() -> a structured intent (deterministic, no LLM) -> Agent
--> Action(s) using WorldState, the same as a typed /api/voice_command
-call. /api/voice/transcribe (transcribe only, no side effects) is kept
-for manual testing. Each voice command is recorded as one
-EpisodeRecorder episode (data/episodes/) — instruction, actions taken,
-and result — off the event loop so it never stalls the live demo.
+AudioWorklet sends PCM/WAV utterances after a natural pause. Whisper and
+Gemma run locally; session/turn tokens suppress cancelled responses.
+WorldState supplies current and past observations. Companion persists
+visual memory, errands, notifications and quiet-mode preferences.
 """
 import asyncio
+import errno
 import json
 import socket
 import subprocess
 import time
 from collections import deque
+from contextvars import ContextVar
+from contextlib import asynccontextmanager, suppress
+from companion import Companion, ConversationContext
 from enum import Enum
 from io import BytesIO
 from pathlib import Path
@@ -67,7 +43,34 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 CERT_DIR = BASE_DIR / "certs"
 
-app = FastAPI(title="PeponBot")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    detection_task = None
+    ready = False
+    try:
+        await load_perception_model()
+        await load_speech_model()
+        recorder.start()
+        detection_task = asyncio.create_task(_detection_loop())
+        ready = True
+        yield
+    finally:
+        if detection_task is not None:
+            detection_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await detection_task
+        try:
+            if ready:
+                agent.cancel_search()
+                await companion.save()
+        finally:
+            try:
+                await recorder.stop()
+            finally:
+                await gemma_agent.aclose()
+
+
+app = FastAPI(title="PeponBot", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -82,7 +85,23 @@ class PeponState(str, Enum):
 
 
 connections: Set[WebSocket] = set()
-world_state = WorldState()  # single source of truth for Pepon's current state (world_state.pepon_state)
+world_state = WorldState()
+companion = Companion(world_state, BASE_DIR / 'data' / 'companion.json')
+voice_sessions = {}
+manual_context = ConversationContext()
+voice_scope = ContextVar('voice_scope', default=None)
+response_scope = ContextVar('response_scope', default=None)
+command_lock = asyncio.Lock()
+speech_lock = asyncio.Lock()
+
+
+def voice_valid(scope):
+    return scope is None or (scope[0] in voice_sessions and voice_sessions[scope[0]]['turn'] == scope[1])
+
+
+def voice_busy():
+    return any(s.get('state') in ('capturing', 'processing', 'speaking') and
+               time.time() - s.get('updated_at', 0) < 45 for s in voice_sessions.values())
 
 
 async def _set_pepon_state(new_state: PeponState) -> None:
@@ -152,16 +171,13 @@ last_voice_error: Optional[dict] = None  # SpeechRecognition error, for live deb
 speech_service: Optional[SpeechService] = None
 
 
-@app.on_event("startup")
 async def load_perception_model():
     global perception_service
     print("[perception] loading YOLOv8n...")
     perception_service = await asyncio.to_thread(PerceptionService)
     print("[perception] model ready")
-    asyncio.create_task(_detection_loop())
 
 
-@app.on_event("startup")
 async def load_speech_model():
     global speech_service
     print("[speech] loading Whisper...")
@@ -169,30 +185,49 @@ async def load_speech_model():
     print(f"[speech] model ready (device={speech_service.device})")
 
 
-@app.on_event("startup")
-async def start_recorder():
-    recorder.start()
-
-
 async def _detection_loop():
     global last_detections, last_detection_at
+    processed_frame = 0
+    saved_at = time.time()
     while True:
         await asyncio.sleep(DETECTION_INTERVAL_SECONDS)
         if perception_service is None or last_frame_jpeg is None:
             continue
+        if frame_stats.last_frame_at is None or time.time() - frame_stats.last_frame_at > 2.5:
+            world_state.invalidate_camera()
+            companion.camera_lost()
+            last_detections = []
+            continue
+        if frame_stats.frames_received == processed_frame:
+            continue
+        processed_frame = frame_stats.frames_received
+        frame_at = frame_stats.last_frame_at
+        view = world_state.camera_revision
         try:
             detections = await asyncio.to_thread(perception_service.detect, last_frame_jpeg)
         except Exception as exc:
             print(f"[perception] detection failed: {exc}")
             continue
+        if time.time() - frame_at > 2.5 or view != world_state.camera_revision:
+            continue
         last_detections = [d.as_dict() for d in detections]
         last_detection_at = time.time()
         world_state.update_detections(last_detections)
+        world_state.last_detection_at = frame_at
         await broadcast({"type": "detections", "objects": last_detections})
         await agent.check_active_target()
 
+        changed = companion.observe(busy=voice_busy())
+        if changed or time.time() - saved_at > 10:
+            try:
+                await companion.save()
+                saved_at = time.time()
+            except OSError as exc:
+                print(f'[companion] save failed: {exc}')
         gaze = person_tracker.update(last_detections)
-        if gaze is not None:
+        # Preserve explicit object gaze; attend to the visible person when
+        # they begin a turn, without claiming microphone direction finding.
+        if gaze is not None and not world_state.active_target and world_state.pepon_state not in ('FOUND', 'THINKING'):
             await action_executor.execute(actions.look_at(gaze[0], gaze[1], target="person"))
 
 
@@ -222,18 +257,67 @@ async def ws_endpoint(websocket: WebSocket):
                 continue
             text = message.get("text")
             if text is not None:
-                await _handle_text_message(text)
+                await _handle_text_message(text, websocket)
     except WebSocketDisconnect:
+        pass
+    finally:
         connections.discard(websocket)
+        for session in [key for key, value in voice_sessions.items() if value.get('socket') is websocket]:
+            voice_sessions.pop(session, None)
+        if not voice_sessions:
+            agent.cancel_search()
 
 
-async def _handle_text_message(text: str) -> None:
-    global last_voice_heard, last_voice_error
+async def _handle_text_message(text: str, websocket=None) -> None:
+    global last_voice_heard, last_voice_error, last_frame_jpeg, last_detections
     try:
         payload = json.loads(text)
     except ValueError:
         return
+    if not isinstance(payload, dict):
+        return
     msg_type = payload.get("type")
+    if msg_type == 'conversation':
+        session = str(payload.get('session', ''))[:80]
+        if not session:
+            return
+        if payload.get('active'):
+            for old in [key for key, value in voice_sessions.items() if value.get('socket') is websocket]:
+                voice_sessions.pop(old, None)
+            voice_sessions[session] = {'turn': 0, 'socket': websocket, 'context': ConversationContext(),
+                                       'state': 'listening', 'updated_at': time.time()}
+        elif session in voice_sessions and voice_sessions[session].get('socket') is websocket:
+            voice_sessions.pop(session, None)
+            agent.cancel_search()
+            await _set_pepon_state(PeponState.IDLE)
+        return
+    if msg_type == 'voice_activity':
+        session = voice_sessions.get(payload.get('session'))
+        if session and session.get('socket') is websocket:
+            turn = payload.get('turn', 0)
+            if not isinstance(turn, int) or turn < session['turn']:
+                return
+            session['turn'] = turn
+            session['state'] = payload.get('state', 'listening')
+            session['updated_at'] = time.time()
+            if session['state'] == 'capturing':
+                agent.cancel_search()
+                await _set_pepon_state(PeponState.LISTENING)
+                person = world_state.get_object('person')
+                if world_state.camera_fresh and person and person.visible:
+                    await action_executor.execute(actions.look_at(person.x, person.y, target='person'))
+            elif session['state'] == 'processing':
+                await _set_pepon_state(PeponState.THINKING)
+            elif session['state'] == 'listening':
+                await _set_pepon_state(PeponState.LISTENING)
+        return
+    if msg_type == 'camera_changed':
+        last_frame_jpeg = None
+        last_detections = []
+        world_state.camera_view = payload.get('facing', 'user')
+        world_state.invalidate_camera()
+        companion.camera_lost()
+        return
     if msg_type == "motion":
         await _handle_motion(payload)
     elif msg_type == "wake_word":
@@ -255,11 +339,15 @@ async def _handle_motion(payload: dict) -> None:
     world_state.set_phone_motion(motion_classifier.phase, event)
     await broadcast({"type": "motion_event", "event": event})
 
+    if event in ('PHONE_SHAKEN', 'PHONE_PICKED_UP', 'PHONE_TILTED'):
+        world_state.invalidate_camera()
+        companion.camera_lost()
     if event == "PHONE_SHAKEN":
         await _set_pepon_state(PeponState.CONFUSED)
         await broadcast({"type": "dizzy"})
     elif event == "PHONE_PICKED_UP":
         await _set_pepon_state(PeponState.SURPRISED)
+        companion.react_to_pickup(busy=voice_busy())
     elif event == "PHONE_STABLE" and world_state.pepon_state in (PeponState.CONFUSED, PeponState.SURPRISED):
         # Only clear reactions we caused ourselves — don't stomp on a state
         # the voice Agent might have set (e.g. LISTENING, SEARCHING).
@@ -278,20 +366,37 @@ async def _handle_voice_command(text: str) -> None:
     await _route_voice_text(text)
 
 
-async def _route_voice_text(text: str) -> dict:
-    """Shared by the phone's WS voice_command and the /api/voice_command
-    manual-test endpoint. Deterministic intents keep working exactly as
-    before; only a command intent.parse() couldn't match at all falls
-    through to GemmaAgent's semantic reasoning."""
-    parsed = intent.parse(text)
-    if parsed["intent"] == intent.INTENT_UNKNOWN and gemma_agent.enabled:
-        # Current frame, not a stream: this is a one-off per voice command,
-        # never called from the camera/detection loop.
-        decision = await gemma_agent.decide(text, world_state, frame_jpeg=last_frame_jpeg)
-        await agent.handle_semantic(decision, transcript=text)
-        return {"intent": parsed, "gemma_decision": decision.model_dump()}
-    await agent.handle(parsed, transcript=text)
-    return {"intent": parsed}
+async def _route_voice_text(text: str, scope=None) -> dict:
+    async with command_lock:
+        if not voice_valid(scope):
+            return {'cancelled': True}
+        context = voice_sessions[scope[0]]['context'] if scope else manual_context
+        world_state.expire_camera()
+        parsed = intent.parse(text, context.current_referent())
+        token = voice_scope.set(scope)
+        spoken = []
+        response_token = response_scope.set(spoken)
+        try:
+            answer = await companion.handle(parsed, context)
+            result = {'intent': parsed}
+            target = parsed.get('object')
+            if answer is not None:
+                await agent.handle_reply(answer, parsed, transcript=text)
+            elif parsed['intent'] == intent.INTENT_UNKNOWN and gemma_agent.enabled:
+                frame = last_frame_jpeg if world_state.camera_fresh else None
+                decision = await gemma_agent.decide(text, world_state, frame_jpeg=frame, history=list(context.history))
+                if not voice_valid(scope):
+                    return {'cancelled': True}
+                await agent.handle_semantic(decision, transcript=text)
+                result['gemma_decision'] = decision.model_dump()
+                target = decision.target
+            else:
+                await agent.handle(parsed, transcript=text)
+            context.remember(text, ' '.join(spoken), target)
+            return {**result, 'response': ' '.join(spoken)}
+        finally:
+            voice_scope.reset(token)
+            response_scope.reset(response_token)
 
 
 def _ingest_frame(data: bytes) -> None:
@@ -361,7 +466,9 @@ async def get_voice_status():
     """Live diagnostics for the phone's speech recognition, so problems
     (mishearing the wake word, permission/network errors) are visible
     on /debug without tethering the phone for USB devtools."""
-    return {"last_heard": last_voice_heard, "last_error": last_voice_error}
+    return {"last_heard": last_voice_heard, "last_error": last_voice_error,
+            'semantic': gemma_agent.last_status,
+            'sessions': [{'state': s.get('state'), 'turn': s['turn']} for s in voice_sessions.values()]}
 
 
 @app.get("/api/world")
@@ -427,13 +534,31 @@ async def post_voice_audio(request: Request):
     if speech_service is None:
         raise HTTPException(status_code=503, detail="speech model still loading")
     audio_bytes = await request.body()
+    if len(audio_bytes) > 4_000_000:
+        raise HTTPException(status_code=413, detail='audio too long')
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="empty audio")
-    text = await asyncio.to_thread(speech_service.transcribe, audio_bytes)
+    session = request.headers.get('X-Conversation-ID')
+    scope = None
+    if session:
+        try:
+            turn = int(request.headers.get('X-Turn-ID', '0'))
+        except ValueError:
+            raise HTTPException(status_code=400, detail='invalid turn')
+        if session not in voice_sessions or turn < voice_sessions[session]['turn']:
+            return {'cancelled': True, 'transcript': ''}
+        voice_sessions[session]['turn'] = turn
+        scope = (session, turn)
+    async with speech_lock:
+        if not voice_valid(scope):
+            return {'cancelled': True, 'transcript': ''}
+        text = await asyncio.to_thread(speech_service.transcribe, audio_bytes)
+    if not voice_valid(scope):
+        return {'cancelled': True, 'transcript': ''}
     last_voice_heard = {"text": text, "at": time.time()}
     if not text:
         return {"transcript": ""}
-    result = await _route_voice_text(text)
+    result = await _route_voice_text(text, scope)
     return {"transcript": text, **result}
 
 
@@ -447,7 +572,10 @@ async def post_voice_transcribe(request: Request):
     audio_bytes = await request.body()
     if not audio_bytes:
         return {"transcript": ""}
-    text = await asyncio.to_thread(speech_service.transcribe, audio_bytes)
+    if len(audio_bytes) > 4_000_000:
+        raise HTTPException(status_code=413, detail='audio too long')
+    async with speech_lock:
+        text = await asyncio.to_thread(speech_service.transcribe, audio_bytes)
     return {"transcript": text}
 
 
@@ -466,8 +594,16 @@ async def post_action(payload: Dict[str, Any]):
 
 
 async def broadcast(payload: dict):
+    scope = voice_scope.get()
+    if not voice_valid(scope):
+        return
+    responses = response_scope.get()
+    if responses is not None and payload.get('type') == 'speak':
+        responses.append(payload['text'])
+    if scope:
+        payload = {**payload, 'session': scope[0], 'turn': scope[1]}
     dead = set()
-    for ws in connections:
+    for ws in list(connections):
         try:
             await ws.send_json(payload)
         except Exception:
@@ -479,11 +615,6 @@ action_executor = PhoneExecutor(broadcast)
 recorder = EpisodeRecorder()
 agent = Agent(world_state, action_executor, recorder=recorder, frame_provider=lambda: last_frame_jpeg)
 gemma_agent = GemmaAgent()  # semantic reasoning layer — see cognition/gemma_agent.py
-
-
-@app.on_event("shutdown")
-async def close_gemma_client():
-    await gemma_agent.aclose()
 
 
 @app.get("/api/episodes")
@@ -502,6 +633,35 @@ async def list_episodes(limit: int = 20):
         return results
 
     return await asyncio.to_thread(_read)
+
+
+@app.get('/api/assistant')
+async def assistant_status():
+    return companion.as_dict()
+
+
+class Preferences(BaseModel):
+    quiet: bool
+
+
+@app.post('/api/assistant/preferences')
+async def assistant_preferences(settings: Preferences):
+    await companion.handle({'intent': 'QUIET_MODE', 'enabled': settings.quiet}, manual_context)
+    return companion.as_dict()
+
+
+@app.delete('/api/assistant/watches/{watch_id}')
+async def cancel_watch(watch_id: str):
+    companion.watches = [w for w in companion.watches if w['id'] != watch_id]
+    await companion.save()
+    return companion.as_dict()
+
+
+@app.post('/api/assistant/notifications/{notice_id}/ack')
+async def acknowledge_notification(notice_id: str):
+    companion.acknowledge(notice_id)
+    await companion.save()
+    return {'ok': True}
 
 
 def _lan_ip() -> str:
@@ -544,7 +704,23 @@ def _ensure_self_signed_cert(lan_ip: str) -> tuple[Path, Path]:
     return cert_path, key_path
 
 
-if __name__ == "__main__":
+def run_server():
+    # Reserve the actual listener before model loading or lifespan writes.
+    # A second invocation must not load another copy onto the GPU or save
+    # an outdated snapshot over the running server's memory on shutdown.
+    try:
+        listener = socket.create_server(('0.0.0.0', 8000))
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE:
+            raise
+        print('El puerto 8000 ya está ocupado. Hay otro servidor en ejecución.\n'
+              'Usa https://localhost:8000 o detén ese servidor antes de volver a arrancar.')
+        raise SystemExit(1) from None
+    with listener:
+        _run_server(listener)
+
+
+def _run_server(listener):
     ip = _lan_ip()
     cert_path, key_path = _ensure_self_signed_cert(ip)
     print(
@@ -554,7 +730,7 @@ if __name__ == "__main__":
         f"  Debug page:  https://{ip}:8000/debug\n"
         f"  Your browser/phone will warn about the certificate — accept it once.\n"
     )
-    uvicorn.run(
+    config = uvicorn.Config(
         app,
         host="0.0.0.0",
         port=8000,
@@ -565,3 +741,8 @@ if __name__ == "__main__":
         # errors, recorder failures, ...) right when they matter most.
         access_log=False,
     )
+    uvicorn.Server(config).run(sockets=[listener])
+
+
+if __name__ == "__main__":
+    run_server()

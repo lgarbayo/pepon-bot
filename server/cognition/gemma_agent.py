@@ -23,6 +23,7 @@ WorldState never tracked, so LOOK_AT/SEARCH_OBJECT/ANSWER_LOCATION
 still require a target from visible_objects/memory; an image-only
 object can only be described via SPEAK/DESCRIBE_SCENE.
 """
+import asyncio
 import base64
 import json
 import time
@@ -47,12 +48,16 @@ Given a spoken instruction and Pepon's current WorldState, choose exactly ONE ac
 Rules:
 - Output JSON only. No prose, no markdown, no code, no explanation of your reasoning.
 - Choose "action" from EXACTLY these values: LOOK_AT, SEARCH_OBJECT, DESCRIBE_SCENE, ANSWER_LOCATION, SPEAK, IDLE.
-- Never invent an object that is not listed in visible_objects or memory. If nothing fits, use IDLE or SPEAK.
+- Ground claims in visible_objects, memory, or what is actually visible in the attached image. Do not invent observations.
 - Prefer visible_objects (currently seen) over memory (last seen N seconds ago) when both could answer.
 - If you use memory, "text" must clearly describe a PAST observation ("last saw it..."), never claim it is currently there.
 - LOOK_AT, SEARCH_OBJECT and ANSWER_LOCATION require "target" to be one of the object classes given to you in visible_objects/memory — never a word you only saw in an attached image.
 - An attached image, if present, is what Pepon's camera currently sees — use it to understand the scene better and disambiguate the instruction. If it shows something useful that ISN'T in visible_objects/memory, you cannot LOOK_AT/SEARCH_OBJECT/ANSWER_LOCATION it (no known position) — use SPEAK to describe it instead.
 - Keep "text" short (one sentence), in Spanish, and only set it for SPEAK or a brief remark alongside LOOK_AT/SEARCH_OBJECT.
+- Always include all three fields: action, target, text. Use null for unused fields. SPEAK requires nonempty text.
+- For questions about what an object can be used for (such as something to drink from), answer the question using SPEAK and explain which visible object fits. If none fits, say so. Do not start searching unless asked to search.
+- Use recent_conversation to resolve follow-up questions, but only current WorldState establishes what is visible now.
+- Never claim to have created a reminder or monitoring task: only the deterministic command system can do that.
 - Never output sensor data, coordinates, or code."""
 
 # Kept intentionally short — a second full explanation would cost latency
@@ -77,7 +82,7 @@ _RESPONSE_JSON_SCHEMA = {
         "target": {"type": ["string", "null"]},
         "text": {"type": ["string", "null"]},
     },
-    "required": ["action"],
+    "required": ["action", "target", "text"],
 }
 
 
@@ -135,10 +140,11 @@ class GemmaAgent:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.enabled = enabled
+        self.last_status = None
         self._client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout)
 
     async def decide(
-        self, instruction: str, world_state: WorldState, frame_jpeg: Optional[bytes] = None
+        self, instruction: str, world_state: WorldState, frame_jpeg: Optional[bytes] = None, history: Optional[list] = None
     ) -> GemmaDecision:
         """Never raises. Returns a validated GemmaDecision, falling back
         to a safe SPEAK on any failure (Ollama down, malformed output
@@ -152,22 +158,38 @@ class GemmaAgent:
 
         compact = _compact_world_state(world_state)
         known = _known_objects(compact)
-        user_payload = json.dumps({"instruction": instruction, "world_state": compact}, ensure_ascii=False)
+        user_payload = json.dumps({"instruction": instruction, "world_state": compact, "recent_conversation": history or []}, ensure_ascii=False)
         image_b64 = base64.b64encode(frame_jpeg).decode("ascii") if frame_jpeg else None
 
         start = time.monotonic()
-        decision, error = await self._ask(user_payload, known, image_b64)
-        if decision is None:
-            decision, error = await self._ask(user_payload + CORRECTIVE_SUFFIX, known, image_b64)
+        decision, error = None, None
+        try:
+            async with asyncio.timeout(config.GEMMA_TOTAL_TIMEOUT_SECONDS):
+                decision, error = await self._ask(user_payload, known, image_b64)
+                # Retry malformed decisions once. Network/HTTP failures are
+                # operational errors; repeating them masks the real cause.
+                if decision is None and not error.startswith('ollama '):
+                    decision, error = await self._ask(user_payload + CORRECTIVE_SUFFIX, known, image_b64)
+        except TimeoutError:
+            error = 'ollama timeout: total decision budget exceeded'
         latency_ms = round((time.monotonic() - start) * 1000)
+
+        self.last_status = {'ok': decision is not None, 'error': error,
+                            'latency_ms': latency_ms, 'at': time.time()}
 
         print(f'[GEMMA] instruction="{instruction}"')
         if config.GEMMA_DEBUG:
             print(f"[GEMMA] world_state={compact}")
         print(f"[GEMMA] latency={latency_ms}ms")
         if decision is None:
-            print(f"[GEMMA] validation=FAILED ({error}) -> fallback")
-            return GemmaDecision(action="SPEAK", text="No he entendido bien eso.")
+            print(f"[GEMMA] request=FAILED ({error}) -> fallback")
+            if error.startswith('ollama timeout'):
+                text = 'Estoy tardando demasiado en analizarlo. Inténtalo otra vez.'
+            elif error.startswith('ollama '):
+                text = 'He oído tu pregunta, pero ahora mismo mi servicio de conversación no está disponible.'
+            else:
+                text = 'He oído tu pregunta, pero no he podido preparar una respuesta válida.'
+            return GemmaDecision(action="SPEAK", text=text)
         print(f"[GEMMA] action={decision.action} target={decision.target} text={decision.text!r} validation=OK")
         return decision
 
@@ -177,6 +199,12 @@ class GemmaAgent:
         user_message = {"role": "user", "content": user_content}
         if image_b64:
             user_message["images"] = [image_b64]
+        # Constrain generation itself, rather than rejecting a Spanish name,
+        # invented target or missing fields after the model has finished.
+        schema = {**_RESPONSE_JSON_SCHEMA, 'properties': {
+            **_RESPONSE_JSON_SCHEMA['properties'],
+            'target': {'type': ['string', 'null'], 'enum': sorted(known_objects) + [None]},
+        }}
         try:
             response = await self._client.post(
                 "/api/chat",
@@ -186,14 +214,18 @@ class GemmaAgent:
                         {"role": "system", "content": SYSTEM_PROMPT},
                         user_message,
                     ],
-                    "format": _RESPONSE_JSON_SCHEMA,
+                    "format": schema,
                     "stream": False,
                     "options": {"temperature": 0.1},
                 },
             )
             response.raise_for_status()
+        except httpx.TimeoutException as exc:
+            return None, f"ollama timeout: {type(exc).__name__}"
+        except httpx.HTTPStatusError as exc:
+            return None, f"ollama HTTP {exc.response.status_code}: {exc.response.text[:500]}"
         except httpx.HTTPError as exc:
-            return None, f"ollama request failed: {exc}"
+            return None, f"ollama unavailable: {exc}"
 
         return self._parse_and_validate(response, known_objects)
 
@@ -202,7 +234,7 @@ class GemmaAgent:
         try:
             raw = response.json()["message"]["content"]
             decision = GemmaDecision.model_validate_json(raw)
-        except (KeyError, ValueError, ValidationError) as exc:
+        except (KeyError, TypeError, ValueError, ValidationError) as exc:
             return None, f"invalid model output: {exc}"
 
         if decision.action not in SEMANTIC_ACTIONS:
@@ -210,6 +242,8 @@ class GemmaAgent:
         if decision.action in _ACTIONS_NEEDING_TARGET:
             if not decision.target or decision.target not in known_objects:
                 return None, f"target {decision.target!r} not in known objects"
+        if decision.action == 'SPEAK' and not (decision.text and decision.text.strip()):
+            return None, 'SPEAK requires a nonempty text'
 
         return decision, None
 

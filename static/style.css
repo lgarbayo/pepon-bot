@@ -34,7 +34,7 @@ html, body {
 
 #status-bar {
   position: fixed;
-  top: 16px;
+  top: max(24px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -220,62 +220,223 @@ html, body {
   text-transform: uppercase;
 }
 
-/* Siri-style: one circular button, tap to start/end a conversation —
-   deliberately round (not the octagon eyes' shape) so it always reads
-   as "the button", never as part of Pepon's face. */
-#talk-btn {
+/* A voice orb rendered in four-color pixel art: hard highlights and
+   stepped wave motion keep the assistant control in the DMG world. */
+#voice-control {
   position: fixed;
-  bottom: 32px;
+  bottom: max(28px, env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
-  width: 72px;
-  height: 72px;
-  border: 4px solid var(--gb-darkest);
-  border-radius: 50%;
-  background: var(--gb-light);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+#talk-btn, #camera-switch-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   color: var(--gb-darkest);
-  font-size: 28px;
+}
+
+#talk-btn {
+  width: 96px;
+  height: 96px;
+  border: 2px solid var(--gb-light);
+  border-radius: 50%;
+  background: var(--gb-lightest);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 0 4px var(--gb-lightest), 0 0 0 5px var(--gb-light);
+}
+
+.voice-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  transition: transform 160ms steps(3, end);
+}
+
+.orb-shell { position: absolute; inset: 0; width: 100%; height: 100%; }
+.orb-body { fill: var(--gb-light); }
+.orb-shade { fill: var(--gb-dark); }
+.orb-glint { fill: var(--gb-darkest); }
+
+.orb-wave {
   display: flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: 4px 4px 0 var(--gb-darkest); /* flat pixel drop-shadow, no blur */
+  gap: 3px;
+  height: 40px;
+  z-index: 1;
 }
 
-#talk-btn:active {
-  background: var(--gb-dark);
-  box-shadow: 2px 2px 0 var(--gb-darkest);
-  transform: translateX(-50%) translate(2px, 2px);
-}
-
-/* Active conversation: inverted colors + a steady pixel-pulse so it's
-   obvious at a glance the mic is live, without a blurred "recording"
-   glow that would clash with the rest of the pixel-art look. */
-#talk-btn.listening {
+.orb-wave i {
+  display: block;
+  width: 4px;
+  height: 8px;
   background: var(--gb-darkest);
-  color: var(--gb-lightest);
-  animation: talk-pulse 800ms steps(2, end) infinite;
+  box-shadow: 0 2px 0 var(--gb-lightest);
+  transform-origin: center;
 }
 
-@keyframes talk-pulse {
-  0%, 100% { transform: translateX(-50%) scale(1); }
-  50% { transform: translateX(-50%) scale(1.12); }
+.orb-wave i:nth-child(2), .orb-wave i:nth-child(6) { height: 16px; }
+.orb-wave i:nth-child(3), .orb-wave i:nth-child(5) { height: 24px; }
+.orb-wave i:nth-child(4) { height: 32px; }
+
+#talk-hint {
+  font-size: 8px;
+  line-height: 1.6;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+#talk-btn:active .voice-orb { transform: scale(0.9); }
+
+#talk-btn:focus-visible, #camera-switch-btn:focus-visible {
+  outline: 2px solid var(--gb-darkest);
+  outline-offset: 8px;
+}
+
+#talk-btn.listening {
+  border-color: var(--gb-darkest);
+  box-shadow: 0 0 0 4px var(--gb-lightest), 0 0 0 6px var(--gb-dark);
+}
+
+#talk-btn.listening .orb-wave i {
+  transform: scaleY(var(--voice-level, 0.12));
+}
+
+#talk-btn.listening .orb-wave i:nth-child(2n) { animation-delay: -240ms; }
+#talk-btn.listening .orb-wave i:nth-child(3n) { animation-delay: -480ms; }
+#talk-btn.listening .orb-wave i:nth-child(4) { animation-delay: -720ms; }
+
+#talk-btn[data-voice-state="speaking"] .orb-wave i {
+  animation: voice-wave 960ms steps(4, end) infinite;
+}
+
+#talk-btn[data-voice-state="processing"] .orb-shell {
+  animation: orb-think 2s steps(8, end) infinite;
+}
+
+#talk-btn[data-voice-state="processing"] .orb-wave i { transform: scaleY(0.2); }
+#talk-btn[data-voice-state="error"] { border-style: dashed; border-color: var(--gb-darkest); }
+@keyframes orb-think { to { transform: rotate(360deg); } }
+
+#voice-status {
+  min-height: 12px;
+  max-width: min(300px, 85vw);
+  text-align: center;
+  font-size: 7px;
+  line-height: 1.7;
+}
+
+#speech-caption {
+  position: fixed;
+  bottom: 222px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(85vw, 560px);
+  max-height: 64px;
+  overflow-y: auto;
+  text-align: center;
+  font-size: 9px;
+  line-height: 1.8;
+}
+
+#companion-panel {
+  position: fixed;
+  z-index: 3;
+  left: max(16px, env(safe-area-inset-left));
+  top: max(76px, calc(env(safe-area-inset-top) + 60px));
+  width: min(280px, 85vw);
+  font-size: 8px;
+  line-height: 1.8;
+  background: var(--gb-lightest);
+}
+#companion-panel summary { cursor: pointer; min-height: 32px; }
+#watch-count { font-size: 6px; margin-left: 8px; }
+#companion-panel[open] { padding: 12px; border: 2px solid var(--gb-light); max-height: 45vh; overflow: auto; }
+#companion-panel label { display: flex; align-items: center; min-height: 44px; gap: 8px; }
+#quiet-toggle { accent-color: var(--gb-darkest); width: 20px; height: 20px; }
+#companion-panel p { font-family: monospace; font-size: 12px; }
+#watch-list { list-style: none; padding: 0; margin: 12px 0 0; }
+#watch-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+#watch-list button, #notice-btn {
+  font: inherit; color: var(--gb-darkest); background: var(--gb-lightest);
+  border: 2px solid var(--gb-light); cursor: pointer; min-height: 44px;
+}
+#watch-list button { min-width: 44px; font-size: 20px; }
+#notice-btn { position: fixed; top: 116px; left: 16px; padding: 8px; font-size: 7px; z-index: 2; }
+#camera-switch-btn:disabled { opacity: 0.6; cursor: wait; }
+
+@keyframes voice-wave {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1.25); }
 }
 
 #camera-switch-btn {
   position: fixed;
-  top: 16px;
-  right: 16px;
-  width: 40px;
-  height: 40px;
-  border: 3px solid var(--gb-darkest);
-  background: var(--gb-light);
-  color: var(--gb-darkest);
-  font-size: 16px;
-  box-shadow: 3px 3px 0 var(--gb-darkest);
+  top: max(12px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--gb-light);
+  border-radius: 8px;
+  background: var(--gb-lightest);
+  box-shadow: 2px 2px 0 var(--gb-light);
 }
 
+#camera-switch-btn svg { width: 32px; height: 32px; }
+.camera-body { fill: none; stroke: currentColor; stroke-width: 2; }
+.camera-arrows { fill: none; stroke: currentColor; stroke-width: 2; }
+
 #camera-switch-btn:active {
-  background: var(--gb-dark);
-  box-shadow: 1px 1px 0 var(--gb-darkest);
+  background: var(--gb-light);
+  box-shadow: none;
   transform: translate(2px, 2px);
+}
+
+@media (hover: hover) {
+  #talk-btn:hover, #camera-switch-btn:hover { border-color: var(--gb-darkest); }
+}
+
+@media (max-width: 360px) {
+  #status-bar { left: 16px; transform: none; font-size: 8px; }
+}
+
+@media (min-height: 481px) and (max-height: 700px) {
+  #face, #state-label { position: relative; top: -70px; }
+}
+
+@media (min-height: 481px) and (max-height: 600px) {
+  #face, #state-label { top: -90px; }
+  .eye { width: 80px; height: 80px; }
+  #face { gap: 40px; }
+  #speech-caption { bottom: 210px; max-height: 44px; }
+}
+
+@media (max-height: 480px) {
+  #voice-control { left: auto; right: max(24px, env(safe-area-inset-right)); transform: none; bottom: max(16px, env(safe-area-inset-bottom)); }
+  #talk-btn { width: 72px; height: 72px; }
+  .voice-orb { width: 60px; height: 60px; }
+  .orb-wave { transform: scale(0.75); }
+  #talk-hint { font-size: 6px; letter-spacing: 0; }
+  #face, #state-label { margin-right: 120px; }
+  #voice-status { max-width: 130px; font-size: 6px; }
+  #speech-caption { left: 24px; transform: none; bottom: 20px; width: calc(100vw - 210px); max-height: 54px; }
+  #companion-panel { top: 60px; width: 200px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #talk-btn.listening .orb-wave i { animation: none; }
+  #talk-btn[data-voice-state="processing"] .orb-shell { animation: none; }
+  .voice-orb { transition: none; }
 }

@@ -67,6 +67,15 @@ class Agent:
             await self._unknown(episode_id)
             self._end(episode_id, "failure", "unrecognized command")
 
+    async def handle_reply(self, text, parsed, transcript=''):
+        episode = self.recorder.start_episode(transcript, parsed) if self.recorder else None
+        await self._act(actions.speak(text), episode)
+        self._end(episode, 'success')
+
+    def cancel_search(self):
+        self._end(self.world_state.active_target_episode_id, 'cancelled')
+        self.world_state.set_active_target(None)
+
     async def handle_semantic(self, decision: GemmaDecision, transcript: str = "") -> None:
         """Executes a validated GemmaAgent decision, reusing the exact
         same resolution/execution/recording paths as a deterministic
@@ -176,7 +185,7 @@ class Agent:
 
     async def _timeout_search(self, obj: str, episode_id: str) -> None:
         await asyncio.sleep(FIND_TIMEOUT_SECONDS)
-        if self.world_state.active_target != obj:
+        if self.world_state.active_target != obj or self.world_state.active_target_episode_id != episode_id:
             return  # already resolved (found) or superseded by a newer command
         self.world_state.set_active_target(None)
         await self._set_expression("IDLE", episode_id)

@@ -8,13 +8,9 @@ from io import BytesIO
 from typing import List
 
 from PIL import Image
+from pathlib import Path
 
-# No class filter — YOLOv8n's full 80-class COCO vocabulary is accepted
-# (Pepon shouldn't need a code change every time someone points it at an
-# object nobody thought to allow-list). Semantic reasoning (GemmaAgent)
-# and Spanish phrasing (world_state.OBJECT_ES) only have translations for
-# the original handful; anything else just falls back to its English
-# COCO name, which is a display/speech detail, not a detection limit.
+# Full COCO vocabulary; vocabulary.py shares all 80 Spanish names and aliases.
 CONFIDENCE_THRESHOLD = 0.4
 
 
@@ -43,7 +39,7 @@ class PerceptionService:
     def __init__(self):
         from ultralytics import YOLO  # local import: keep torch out of every other module
 
-        self._model = YOLO("yolov8n.pt")
+        self._model = YOLO(str(Path(__file__).resolve().parent.parent / "yolov8n.pt"))
 
     def detect(self, jpeg_bytes: bytes) -> List[Detection]:
         image = Image.open(BytesIO(jpeg_bytes)).convert("RGB")
