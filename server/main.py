@@ -745,4 +745,11 @@ def _run_server(listener):
 
 
 if __name__ == "__main__":
-    run_server()
+    try:
+        run_server()
+    except KeyboardInterrupt:
+        # uvicorn already shuts down cleanly on Ctrl+C ("Application
+        # shutdown complete" above) — this is uvloop re-raising the same
+        # interrupt afterwards. Swallow it so Ctrl+C doesn't look like a
+        # crash.
+        pass
