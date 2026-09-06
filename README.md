@@ -12,6 +12,10 @@
 
 A small desktop robot: an old Android phone is the body (camera, microphone, screen, speaker, motion sensors), a PC is the brain (FastAPI + YOLO + Whisper + a local LLM). No cloud service ever sees your camera or microphone — everything runs on your own network.
 
+<p align="center">
+  <img src="docs/screenshots/phone-ui-idle.png" alt="PeponBot's phone UI at rest: connection status, camera-switch button, the PEPÓN companion menu, a pixel-art idle face, and the 'tap to talk' orb" width="320">
+</p>
+
 ## What it solves
 
 Turning a spare phone into a robot companion usually means either a cloud-dependent app (your camera feed leaves your house) or a from-scratch embedded project. PeponBot is neither: it's a thin, inspectable FastAPI backend that treats the phone's browser as a sensor/actuator pair over WebSocket + HTTPS, and does all reasoning — object detection, speech-to-text, semantic understanding — locally on whatever PC (ideally with a GPU) is on the same network.

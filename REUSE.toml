@@ -14,6 +14,7 @@ path = [
     ".gitignore",
     "data/.gitkeep",
     ".github/**",
+    "docs/screenshots/**",
 ]
 SPDX-FileCopyrightText = "2026 Luis Garbayo <lugarbayo@gmail.com>"
 SPDX-License-Identifier = "MIT"
