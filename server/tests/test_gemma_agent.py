@@ -19,7 +19,12 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cognition.gemma_agent import GemmaAgent, GemmaDecision, _compact_world_state, _known_objects
+from cognition.gemma_agent import (
+    GemmaAgent,
+    GemmaDecision,
+    _compact_world_state,
+    _known_objects,
+)
 from world_state import WorldState
 
 

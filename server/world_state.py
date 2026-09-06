@@ -11,10 +11,10 @@ camera. Perception/tracking/proprioception write into it; the future
 voice Agent reads from it.
 """
 import time
-from dataclasses import dataclass, asdict
 from collections import deque
+from dataclasses import asdict, dataclass
+
 from vocabulary import OBJECT_ES
-from typing import Dict, List, Optional
 
 POSITION_LEFT = "LEFT"
 POSITION_CENTER = "CENTER"
@@ -57,7 +57,7 @@ class ObjectMemory:
     x: float = 0.0
     y: float = 0.0
     position: str = POSITION_CENTER
-    last_seen_at: Optional[float] = None
+    last_seen_at: float | None = None
     # Set once this class has survived the same stability check as
     # stable_scene/changes (see _update_scene): a handful of consecutive
     # frames over >=1s. A single stray YOLO frame (e.g. a misdetected
@@ -66,7 +66,7 @@ class ObjectMemory:
     # up to FORGET_AFTER_SECONDS.
     confirmed: bool = False
 
-    def seconds_since_seen(self) -> Optional[float]:
+    def seconds_since_seen(self) -> float | None:
         return None if self.last_seen_at is None else time.time() - self.last_seen_at
 
     def as_dict(self) -> dict:
@@ -84,7 +84,7 @@ class WorldState:
     """Small, inspectable snapshot of Pepon's short-term situation."""
 
     def __init__(self):
-        self.objects: Dict[str, ObjectMemory] = {}
+        self.objects: dict[str, ObjectMemory] = {}
         self.last_detection_at = None
         self.camera_view = 'user'
         self.camera_revision = 0
@@ -93,16 +93,16 @@ class WorldState:
         self.changes = deque(maxlen=80)
         self.scene_ready = False
         self._scene_started = None
-        self.active_target: Optional[str] = None
-        self.active_target_episode_id: Optional[str] = None
+        self.active_target: str | None = None
+        self.active_target_episode_id: str | None = None
         self.pepon_state: str = "IDLE"
         self.phone_motion_phase: str = "STABLE"
-        self.last_motion_event: Optional[str] = None
-        self.last_motion_event_at: Optional[float] = None
+        self.last_motion_event: str | None = None
+        self.last_motion_event_at: float | None = None
 
     # ---- updates from Perception ----
 
-    def update_detections(self, detections: List[dict]) -> None:
+    def update_detections(self, detections: list[dict]) -> None:
         """Call once per detection cycle with that frame's detections."""
         now = time.time()
         self.last_detection_at = now
@@ -138,7 +138,7 @@ class WorldState:
 
     # ---- updates from Proprioception ----
 
-    def set_phone_motion(self, phase: str, event: Optional[str] = None) -> None:
+    def set_phone_motion(self, phase: str, event: str | None = None) -> None:
         self.phone_motion_phase = phase
         if event is not None:
             self.last_motion_event = event
@@ -149,7 +149,7 @@ class WorldState:
     def set_pepon_state(self, state: str) -> None:
         self.pepon_state = state
 
-    def set_active_target(self, cls: Optional[str], episode_id: Optional[str] = None) -> None:
+    def set_active_target(self, cls: str | None, episode_id: str | None = None) -> None:
         self.active_target = cls
         self.active_target_episode_id = episode_id if cls is not None else None
 
@@ -160,7 +160,7 @@ class WorldState:
         person = self.objects.get("person")
         return bool(person and person.visible)
 
-    def get_object(self, cls: str) -> Optional[ObjectMemory]:
+    def get_object(self, cls: str) -> ObjectMemory | None:
         return self.objects.get(cls)
 
     def describe(self, cls: str) -> str:

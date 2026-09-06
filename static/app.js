@@ -6,28 +6,39 @@
 // Frontend API: Pepon.setState(name), Pepon.lookAt(x, y), Pepon.blink()
 // x/y are normalized to [-1, 1] (left/up = -1, right/down = 1).
 
-const VALID_STATES = ['idle', 'listening', 'thinking', 'searching', 'found', 'confused', 'surprised'];
-const POP_STATES = ['found', 'surprised']; // states with a one-shot startled entrance
+const VALID_STATES = [
+  "idle",
+  "listening",
+  "thinking",
+  "searching",
+  "found",
+  "confused",
+  "surprised",
+];
+const POP_STATES = ["found", "surprised"]; // states with a one-shot startled entrance
 const MAX_GAZE_OFFSET_PX = 30; // how far pupils can travel from eye center
 
-const face = document.getElementById('face');
-const stateLabel = document.getElementById('state-label');
-const eyes = [document.getElementById('eye-left'), document.getElementById('eye-right')];
-const eyeInners = eyes.map((eye) => eye.querySelector('.eye-inner'));
-const dizzyWraps = eyes.map((eye) => eye.querySelector('.dizzy-wrap'));
-const pupilWraps = eyes.map((eye) => eye.querySelector('.pupil-wrap'));
+const face = document.getElementById("face");
+const stateLabel = document.getElementById("state-label");
+const eyes = [
+  document.getElementById("eye-left"),
+  document.getElementById("eye-right"),
+];
+const eyeInners = eyes.map((eye) => eye.querySelector(".eye-inner"));
+const dizzyWraps = eyes.map((eye) => eye.querySelector(".dizzy-wrap"));
+const pupilWraps = eyes.map((eye) => eye.querySelector(".pupil-wrap"));
 
 eyeInners.forEach((el) => {
-  el.addEventListener('animationend', () => el.classList.remove('blinking'));
+  el.addEventListener("animationend", () => el.classList.remove("blinking"));
 });
 dizzyWraps.forEach((el) => {
-  el.addEventListener('animationend', () => el.classList.remove('dizzy'));
+  el.addEventListener("animationend", () => el.classList.remove("dizzy"));
 });
 eyes.forEach((eye) => {
-  eye.addEventListener('animationend', () => eye.classList.remove('pop'));
+  eye.addEventListener("animationend", () => eye.classList.remove("pop"));
 });
 
-let currentState = 'idle';
+let currentState = "idle";
 let manualGaze = null; // set by an explicit lookAt() call; overrides auto motion
 let lastBlinkAt = 0;
 let nextBlinkDelay = randomBlinkDelay();
@@ -58,7 +69,7 @@ function applyGaze(x, y) {
 function setState(name) {
   const state = String(name).toLowerCase();
   if (!VALID_STATES.includes(state)) {
-    console.warn('Pepon.setState: unknown state', name);
+    console.warn("Pepon.setState: unknown state", name);
     return;
   }
   currentState = state;
@@ -68,9 +79,9 @@ function setState(name) {
 
   if (POP_STATES.includes(state)) {
     eyes.forEach((eye) => {
-      eye.classList.remove('pop');
+      eye.classList.remove("pop");
       void eye.offsetWidth; // restart animation even if triggered twice quickly
-      eye.classList.add('pop');
+      eye.classList.add("pop");
     });
   }
 }
@@ -82,9 +93,9 @@ function lookAt(x, y) {
 
 function blink() {
   eyeInners.forEach((el) => {
-    el.classList.remove('blinking');
+    el.classList.remove("blinking");
     void el.offsetWidth; // restart animation even if triggered twice quickly
-    el.classList.add('blinking');
+    el.classList.add("blinking");
   });
   lastBlinkAt = performance.now();
   nextBlinkDelay = randomBlinkDelay();
@@ -92,9 +103,9 @@ function blink() {
 
 function dizzy() {
   dizzyWraps.forEach((el) => {
-    el.classList.remove('dizzy');
+    el.classList.remove("dizzy");
     void el.offsetWidth; // restart animation even if triggered twice quickly
-    el.classList.add('dizzy');
+    el.classList.add("dizzy");
   });
 }
 
@@ -104,13 +115,13 @@ function tick(timestamp) {
   if (!manualGaze) {
     const t = timestamp / 1000;
     switch (currentState) {
-      case 'thinking':
+      case "thinking":
         applyGaze(Math.sin(t * 2) * 0.5, 0);
         break;
-      case 'searching':
+      case "searching":
         applyGaze(Math.sin(t * 1.2) * 0.8, Math.sin(t * 0.6) * 0.15);
         break;
-      case 'confused':
+      case "confused":
         applyGaze(Math.sin(t * 9) * 0.12, Math.cos(t * 7) * 0.08);
         break;
       default:
@@ -128,9 +139,13 @@ function tick(timestamp) {
   // elements (e.g. CONFUSED's wiggle, FOUND's pop) — see isTalking above.
   if (isTalking) {
     const pulse = 1 + Math.sin(timestamp / 90) * 0.25;
-    eyes.forEach((eye) => { eye.style.filter = `brightness(${pulse})`; });
+    eyes.forEach((eye) => {
+      eye.style.filter = `brightness(${pulse})`;
+    });
   } else if (wasTalking) {
-    eyes.forEach((eye) => { eye.style.filter = ''; });
+    eyes.forEach((eye) => {
+      eye.style.filter = "";
+    });
   }
   wasTalking = isTalking;
 
@@ -142,8 +157,8 @@ window.Pepon = { setState, lookAt, blink, dizzy };
 
 // ---------- WebSocket link ----------
 
-const statusBar = document.getElementById('status-bar');
-const statusText = document.getElementById('status-text');
+const statusBar = document.getElementById("status-bar");
+const statusText = document.getElementById("status-text");
 
 let ws;
 let reconnectDelay = 1000;
@@ -160,42 +175,43 @@ let audioUnlocked = false;
 
 function stopSpeaking() {
   utteranceGeneration++;
-  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
   activeUtterance = null;
   isTalking = false;
-  voiceNode?.port.postMessage({ type: 'speaking', value: false });
+  voiceNode?.port.postMessage({ type: "speaking", value: false });
 }
 
 function speakText(text, onDone = null) {
   if (!text) return;
-  document.getElementById('speech-caption').textContent = text;
-  if (!('speechSynthesis' in window) || !audioUnlocked) {
-    if (conversationActive) setVoiceState('error', 'TOCA PARA ACTIVAR EL AUDIO');
+  document.getElementById("speech-caption").textContent = text;
+  if (!("speechSynthesis" in window) || !audioUnlocked) {
+    if (conversationActive)
+      setVoiceState("error", "TOCA PARA ACTIVAR EL AUDIO");
     return;
   }
   stopSpeaking();
   const generation = utteranceGeneration;
   const utterance = new SpeechSynthesisUtterance(text);
   activeUtterance = utterance; // keep alive until the browser completes TTS
-  utterance.lang = 'es-ES';
+  utterance.lang = "es-ES";
   isTalking = true;
-  voiceNode?.port.postMessage({ type: 'speaking', value: true });
-  if (conversationActive) setVoiceState('speaking');
+  voiceNode?.port.postMessage({ type: "speaking", value: true });
+  if (conversationActive) setVoiceState("speaking");
   utterance.onend = () => {
     if (generation !== utteranceGeneration) return;
     isTalking = false;
     activeUtterance = null;
-    voiceNode?.port.postMessage({ type: 'speaking', value: false });
-    if (conversationActive) setVoiceState('listening');
+    voiceNode?.port.postMessage({ type: "speaking", value: false });
+    if (conversationActive) setVoiceState("listening");
     if (onDone) onDone();
   };
   utterance.onerror = (event) => {
     if (generation !== utteranceGeneration) return;
     isTalking = false;
     activeUtterance = null;
-    voiceNode?.port.postMessage({ type: 'speaking', value: false });
-    setVoiceState('error', 'NO PUEDO REPRODUCIR LA VOZ');
-    sendJSON({ type: 'voice_error', error: `speak: ${event.error}` });
+    voiceNode?.port.postMessage({ type: "speaking", value: false });
+    setVoiceState("error", "NO PUEDO REPRODUCIR LA VOZ");
+    sendJSON({ type: "voice_error", error: `speak: ${event.error}` });
   };
   speechSynthesis.speak(utterance);
 }
@@ -207,18 +223,18 @@ function speakText(text, onDone = null) {
 // (opening it, granting mic permission, tapping the talk button, ...)
 // is enough to unlock spoken responses for the rest of the session —
 // without this, LOOK_AT/ANSWER_LOCATION/etc. still execute silently.
-if ('speechSynthesis' in window) {
+if ("speechSynthesis" in window) {
   speechSynthesis.getVoices();
   speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
   document.body.addEventListener(
-    'pointerdown',
+    "pointerdown",
     () => {
-      const unlock = new SpeechSynthesisUtterance('');
+      const unlock = new SpeechSynthesisUtterance("");
       unlock.volume = 0;
       speechSynthesis.speak(unlock);
       audioUnlocked = true;
     },
-    { once: true }
+    { once: true },
   );
 }
 
@@ -228,52 +244,58 @@ function sendJSON(obj) {
 }
 
 function connect() {
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const proto = location.protocol === "https:" ? "wss" : "ws";
   ws = new WebSocket(`${proto}://${location.host}/ws`);
 
   ws.onopen = () => {
-    statusBar.classList.remove('disconnected');
-    statusBar.classList.add('connected');
-    statusText.textContent = 'CONNECTED';
+    statusBar.classList.remove("disconnected");
+    statusBar.classList.add("connected");
+    statusText.textContent = "CONNECTED";
     reconnectDelay = 1000;
   };
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.session && (msg.session !== conversationSession || msg.turn !== voiceTurn || !conversationActive)) return;
+    if (
+      msg.session &&
+      (msg.session !== conversationSession ||
+        msg.turn !== voiceTurn ||
+        !conversationActive)
+    )
+      return;
     switch (msg.type) {
-      case 'state':
+      case "state":
         Pepon.setState(msg.value);
         break;
-      case 'look_at':
+      case "look_at":
         Pepon.lookAt(msg.x, msg.y);
         break;
-      case 'blink':
+      case "blink":
         Pepon.blink();
         break;
-      case 'detections':
-        console.log('[detections]', msg.objects);
+      case "detections":
+        console.log("[detections]", msg.objects);
         break;
-      case 'dizzy':
+      case "dizzy":
         Pepon.dizzy();
         break;
-      case 'motion_event':
-        console.log('[motion]', msg.event);
+      case "motion_event":
+        console.log("[motion]", msg.event);
         break;
-      case 'speak':
+      case "speak":
         speakText(msg.text);
         break;
-      case 'alert':
-        console.warn('[ALERT]', msg.reason);
+      case "alert":
+        console.warn("[ALERT]", msg.reason);
         break;
     }
   };
 
   ws.onclose = () => {
-    statusBar.classList.remove('connected');
-    statusBar.classList.add('disconnected');
-    statusText.textContent = 'DISCONNECTED';
-    endConversation('SIN CONEXIÓN · VUELVE A TOCAR');
+    statusBar.classList.remove("connected");
+    statusBar.classList.add("disconnected");
+    statusText.textContent = "DISCONNECTED";
+    endConversation("SIN CONEXIÓN · VUELVE A TOCAR");
     scheduleReconnect();
   };
 
@@ -300,10 +322,10 @@ const CAMERA_HEIGHT = 480;
 const CAMERA_FPS = 10;
 const JPEG_QUALITY = 0.6;
 
-const captureCanvas = document.createElement('canvas');
+const captureCanvas = document.createElement("canvas");
 captureCanvas.width = CAMERA_WIDTH;
 captureCanvas.height = CAMERA_HEIGHT;
-const captureCtx = captureCanvas.getContext('2d', { willReadFrequently: true });
+const captureCtx = captureCanvas.getContext("2d", { willReadFrequently: true });
 let cameraVideo = null;
 let cameraStream = null;
 let frameInFlight = false;
@@ -312,11 +334,11 @@ let frameInFlight = false;
 // each other), 'environment' = rear camera. sendFrame's interval is
 // started once and just keeps reading from whatever cameraVideo/stream
 // switchCamera() last swapped in, so switching never stacks intervals.
-let currentFacingMode = 'user';
+let currentFacingMode = "user";
 
 async function startCamera(facingMode = currentFacingMode) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    console.warn('getUserMedia unavailable (needs https or localhost)');
+    console.warn("getUserMedia unavailable (needs https or localhost)");
     return false;
   }
 
@@ -330,7 +352,10 @@ async function startCamera(facingMode = currentFacingMode) {
     cameraStream = null;
   }
 
-  const videoBase = { width: { ideal: CAMERA_WIDTH }, height: { ideal: CAMERA_HEIGHT } };
+  const videoBase = {
+    width: { ideal: CAMERA_WIDTH },
+    height: { ideal: CAMERA_HEIGHT },
+  };
   let stream;
   try {
     // Forced exact facing mode — a plain facingMode string is only a hint
@@ -340,24 +365,28 @@ async function startCamera(facingMode = currentFacingMode) {
       audio: false,
     });
   } catch (err) {
-    console.warn(`Exact ${facingMode} camera unavailable, falling back to any camera:`, err);
+    console.warn(
+      `Exact ${facingMode} camera unavailable, falling back to any camera:`,
+      err,
+    );
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { ...videoBase, facingMode },
         audio: false,
       });
     } catch (err2) {
-      console.error('Camera unavailable:', err2);
+      console.error("Camera unavailable:", err2);
       return false;
     }
   }
 
   try {
     cameraStream = stream;
-    currentFacingMode = stream.getVideoTracks()[0]?.getSettings().facingMode || facingMode;
-    sendJSON({ type: 'camera_changed', facing: currentFacingMode });
+    currentFacingMode =
+      stream.getVideoTracks()[0]?.getSettings().facingMode || facingMode;
+    sendJSON({ type: "camera_changed", facing: currentFacingMode });
     if (!cameraVideo) {
-      cameraVideo = document.createElement('video');
+      cameraVideo = document.createElement("video");
       cameraVideo.playsInline = true;
       cameraVideo.muted = true;
       setInterval(sendFrame, 1000 / CAMERA_FPS); // started once, on first successful camera
@@ -366,16 +395,18 @@ async function startCamera(facingMode = currentFacingMode) {
     await cameraVideo.play();
     return true;
   } catch (err) {
-    console.error('Camera unavailable:', err);
+    console.error("Camera unavailable:", err);
     return false;
   }
 }
 
 async function switchCamera() {
-  const next = currentFacingMode === 'user' ? 'environment' : 'user';
+  const next = currentFacingMode === "user" ? "environment" : "user";
   const ok = await startCamera(next);
   if (!ok) {
-    console.warn(`Switching to ${next} camera failed, staying on ${currentFacingMode}`);
+    console.warn(
+      `Switching to ${next} camera failed, staying on ${currentFacingMode}`,
+    );
     await startCamera(currentFacingMode); // best-effort: recover the camera we still had
   }
 }
@@ -393,20 +424,24 @@ function sendFrame() {
         ws.send(blob);
       }
     },
-    'image/jpeg',
-    JPEG_QUALITY
+    "image/jpeg",
+    JPEG_QUALITY,
   );
 }
 
 startCamera();
 
-const cameraSwitchBtn = document.getElementById('camera-switch-btn');
+const cameraSwitchBtn = document.getElementById("camera-switch-btn");
 if (cameraSwitchBtn) {
-  cameraSwitchBtn.addEventListener('click', async () => {
+  cameraSwitchBtn.addEventListener("click", async () => {
     cameraSwitchBtn.disabled = true;
-    cameraSwitchBtn.setAttribute('aria-busy', 'true');
-    try { await switchCamera(); }
-    finally { cameraSwitchBtn.disabled = false; cameraSwitchBtn.removeAttribute('aria-busy'); }
+    cameraSwitchBtn.setAttribute("aria-busy", "true");
+    try {
+      await switchCamera();
+    } finally {
+      cameraSwitchBtn.disabled = false;
+      cameraSwitchBtn.removeAttribute("aria-busy");
+    }
   });
 }
 
@@ -431,7 +466,11 @@ function handleDeviceMotion(event) {
 
 function handleDeviceOrientation(event) {
   if (event.beta !== null && event.gamma !== null) {
-    latestOrientation = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
+    latestOrientation = {
+      alpha: event.alpha,
+      beta: event.beta,
+      gamma: event.gamma,
+    };
   }
 }
 
@@ -439,35 +478,35 @@ async function startMotionSensors() {
   // iOS 13+ Safari requires an explicit user-gesture permission prompt;
   // Android Chrome exposes no such API and just needs a secure context.
   const needsIOSPermission =
-    typeof DeviceMotionEvent !== 'undefined' &&
-    typeof DeviceMotionEvent.requestPermission === 'function';
+    typeof DeviceMotionEvent !== "undefined" &&
+    typeof DeviceMotionEvent.requestPermission === "function";
 
   if (needsIOSPermission) {
     try {
       const result = await DeviceMotionEvent.requestPermission();
-      if (result !== 'granted') {
-        console.warn('Motion sensor permission denied');
+      if (result !== "granted") {
+        console.warn("Motion sensor permission denied");
         return;
       }
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      if (typeof DeviceOrientationEvent.requestPermission === "function") {
         await DeviceOrientationEvent.requestPermission();
       }
     } catch (err) {
-      console.warn('Motion sensor permission request failed:', err);
+      console.warn("Motion sensor permission request failed:", err);
       return;
     }
   }
 
-  if (typeof DeviceMotionEvent !== 'undefined') {
-    window.addEventListener('devicemotion', handleDeviceMotion);
+  if (typeof DeviceMotionEvent !== "undefined") {
+    window.addEventListener("devicemotion", handleDeviceMotion);
   } else {
-    console.warn('DeviceMotionEvent unsupported on this browser');
+    console.warn("DeviceMotionEvent unsupported on this browser");
   }
 
-  if (typeof DeviceOrientationEvent !== 'undefined') {
-    window.addEventListener('deviceorientation', handleDeviceOrientation);
+  if (typeof DeviceOrientationEvent !== "undefined") {
+    window.addEventListener("deviceorientation", handleDeviceOrientation);
   } else {
-    console.warn('DeviceOrientationEvent unsupported on this browser');
+    console.warn("DeviceOrientationEvent unsupported on this browser");
   }
 
   setInterval(sendMotionSample, MOTION_SEND_INTERVAL_MS);
@@ -475,21 +514,28 @@ async function startMotionSensors() {
 
 function sendMotionSample() {
   if (!latestAccelGravity && !latestOrientation) return; // nothing to report yet
-  sendJSON({ type: 'motion', accel_gravity: latestAccelGravity, orientation: latestOrientation });
+  sendJSON({
+    type: "motion",
+    accel_gravity: latestAccelGravity,
+    orientation: latestOrientation,
+  });
 }
 
 // iOS needs this triggered from a user gesture; a tap anywhere on the
 // page satisfies that without adding a dedicated permission button.
-if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-  document.body.addEventListener('click', startMotionSensors, { once: true });
+if (
+  typeof DeviceMotionEvent !== "undefined" &&
+  typeof DeviceMotionEvent.requestPermission === "function"
+) {
+  document.body.addEventListener("click", startMotionSensors, { once: true });
 } else {
   startMotionSensors();
 }
 
 // ---------- Voice: local VAD, natural turns, interruption and cancellation ----------
-const talkBtn = document.getElementById('talk-btn');
-const talkHint = document.getElementById('talk-hint');
-const voiceStatus = document.getElementById('voice-status');
+const talkBtn = document.getElementById("talk-btn");
+const talkHint = document.getElementById("talk-hint");
+const voiceStatus = document.getElementById("voice-status");
 let micStream = null;
 let audioContext = null;
 let micSource = null;
@@ -498,49 +544,93 @@ let conversationActive = false;
 let conversationStarting = false;
 let conversationSession = null;
 let voiceTurn = 0;
-let voiceState = 'idle';
+let voiceState = "idle";
 let voiceGeneration = 0;
 let voiceRequest = null;
 let lastVoiceLevel = 0;
 
-function setVoiceState(state, message = '') {
+function setVoiceState(state, message = "") {
   voiceState = state;
   talkBtn.dataset.voiceState = state;
-  talkBtn.classList.toggle('listening', conversationActive);
-  talkBtn.setAttribute('aria-pressed', String(conversationActive));
-  talkBtn.setAttribute('aria-label', conversationActive || conversationStarting ? 'Terminar conversación' : 'Hablar con Pepon');
-  talkHint.textContent = conversationActive || conversationStarting ? 'TOCA PARA TERMINAR' : 'TOCA PARA HABLAR';
-  const labels = { idle: '', starting: 'ABRIENDO MICRO', listening: 'TE ESCUCHO', capturing: 'TE ESCUCHO',
-    processing: 'PENSANDO', speaking: 'HABLANDO', error: 'VUELVE A INTENTARLO' };
-  voiceStatus.textContent = message || labels[state] || '';
-  if (conversationSession) sendJSON({ type: 'voice_activity', session: conversationSession, turn: voiceTurn, state });
-  if (state === 'capturing' || state === 'listening') Pepon.setState('listening');
-  if (state === 'processing') Pepon.setState('thinking');
+  talkBtn.classList.toggle("listening", conversationActive);
+  talkBtn.setAttribute("aria-pressed", String(conversationActive));
+  talkBtn.setAttribute(
+    "aria-label",
+    conversationActive || conversationStarting
+      ? "Terminar conversación"
+      : "Hablar con Pepon",
+  );
+  talkHint.textContent =
+    conversationActive || conversationStarting
+      ? "TOCA PARA TERMINAR"
+      : "TOCA PARA HABLAR";
+  const labels = {
+    idle: "",
+    starting: "ABRIENDO MICRO",
+    listening: "TE ESCUCHO",
+    capturing: "TE ESCUCHO",
+    processing: "PENSANDO",
+    speaking: "HABLANDO",
+    error: "VUELVE A INTENTARLO",
+  };
+  voiceStatus.textContent = message || labels[state] || "";
+  if (conversationSession)
+    sendJSON({
+      type: "voice_activity",
+      session: conversationSession,
+      turn: voiceTurn,
+      state,
+    });
+  if (state === "capturing" || state === "listening")
+    Pepon.setState("listening");
+  if (state === "processing") Pepon.setState("thinking");
 }
 
 function encodeWav(samples, sampleRate) {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
-  const write = (offset, text) => [...text].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
-  write(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true);
-  write(8, 'WAVE'); write(12, 'fmt '); view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true); view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
-  write(36, 'data'); view.setUint32(40, samples.length * 2, true);
-  samples.forEach((sample, i) => view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, sample)) * (sample < 0 ? 32768 : 32767), true));
-  return new Blob([buffer], { type: 'audio/wav' });
+  const write = (offset, text) =>
+    [...text].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  write(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  write(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  samples.forEach((sample, i) =>
+    view.setInt16(
+      44 + i * 2,
+      Math.max(-1, Math.min(1, sample)) * (sample < 0 ? 32768 : 32767),
+      true,
+    ),
+  );
+  return new Blob([buffer], { type: "audio/wav" });
 }
 
 async function startConversation() {
   if (conversationActive || conversationStarting) return;
-  if (!ws || ws.readyState !== WebSocket.OPEN) { setVoiceState('error', 'SIN CONEXIÓN CON PEPÓN'); return; }
-  if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext || !window.AudioWorkletNode) {
-    setVoiceState('error', 'EL MICRO NECESITA HTTPS Y UN NAVEGADOR COMPATIBLE'); return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    setVoiceState("error", "SIN CONEXIÓN CON PEPÓN");
+    return;
+  }
+  if (
+    !navigator.mediaDevices?.getUserMedia ||
+    !window.AudioContext ||
+    !window.AudioWorkletNode
+  ) {
+    setVoiceState("error", "EL MICRO NECESITA HTTPS Y UN NAVEGADOR COMPATIBLE");
+    return;
   }
   conversationStarting = true;
   const generation = ++voiceGeneration;
-  setVoiceState('starting');
+  setVoiceState("starting");
   let stream = null;
   let context = null;
   try {
@@ -548,49 +638,72 @@ async function startConversation() {
     context = new AudioContext({ sampleRate: 16000 });
     audioContext = context;
     await context.resume();
-    stream = await navigator.mediaDevices.getUserMedia({ audio: {
-      echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1,
-    } });
-    if (generation !== voiceGeneration) { stream.getTracks().forEach(t => t.stop()); return; }
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+      },
+    });
+    if (generation !== voiceGeneration) {
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
     micStream = stream;
-    await context.audioWorklet.addModule('/static/voice-worklet.js');
+    await context.audioWorklet.addModule("/static/voice-worklet.js");
     if (generation !== voiceGeneration) return;
-    voiceNode = new AudioWorkletNode(context, 'pepon-voice');
+    voiceNode = new AudioWorkletNode(context, "pepon-voice");
     micSource = context.createMediaStreamSource(stream);
     micSource.connect(voiceNode);
     voiceNode.connect(context.destination);
-    voiceNode.onprocessorerror = () => endConversation('ERROR DE AUDIO · VUELVE A TOCAR');
-    stream.getAudioTracks()[0].onended = () => endConversation('MICRO DESCONECTADO');
+    voiceNode.onprocessorerror = () =>
+      endConversation("ERROR DE AUDIO · VUELVE A TOCAR");
+    stream.getAudioTracks()[0].onended = () =>
+      endConversation("MICRO DESCONECTADO");
     context.onstatechange = () => {
-      if (conversationActive && context.state === 'suspended') endConversation('AUDIO EN PAUSA · VUELVE A TOCAR');
+      if (conversationActive && context.state === "suspended")
+        endConversation("AUDIO EN PAUSA · VUELVE A TOCAR");
     };
     conversationSession = crypto.randomUUID();
     voiceTurn = 0;
     conversationActive = true;
     conversationStarting = false;
-    sendJSON({ type: 'conversation', session: conversationSession, active: true });
-    setVoiceState('listening');
+    sendJSON({
+      type: "conversation",
+      session: conversationSession,
+      active: true,
+    });
+    setVoiceState("listening");
     voiceNode.port.onmessage = ({ data }) => {
       if (!conversationActive || generation !== voiceGeneration) return;
       lastVoiceLevel = data.level;
-      talkBtn.style.setProperty('--voice-level', Math.max(0.12, data.level).toFixed(3));
+      talkBtn.style.setProperty(
+        "--voice-level",
+        Math.max(0.12, data.level).toFixed(3),
+      );
       if (data.started) {
         voiceRequest?.abort();
         voiceTurn++;
         stopSpeaking();
-        setVoiceState('capturing');
+        setVoiceState("capturing");
       }
-      if (data.segment) submitVoice(data.segment, context.sampleRate, generation, voiceTurn);
+      if (data.segment)
+        submitVoice(data.segment, context.sampleRate, generation, voiceTurn);
     };
   } catch (error) {
     if (generation !== voiceGeneration) return;
-    const message = error.name === 'NotAllowedError' ? 'PERMITE EL MICRO Y VUELVE A TOCAR' : 'NO PUEDO ABRIR EL MICRO';
-    sendJSON({ type: 'voice_error', error: `mic: ${error.message}` });
+    const message =
+      error.name === "NotAllowedError"
+        ? "PERMITE EL MICRO Y VUELVE A TOCAR"
+        : "NO PUEDO ABRIR EL MICRO";
+    sendJSON({ type: "voice_error", error: `mic: ${error.message}` });
     endConversation(message);
   } finally {
     if (generation !== voiceGeneration) {
-      stream?.getTracks().forEach(t => t.stop());
-      if (context && context.state !== 'closed') await context.close().catch(() => {});
+      stream?.getTracks().forEach((t) => t.stop());
+      if (context && context.state !== "closed")
+        await context.close().catch(() => {});
     }
   }
 }
@@ -599,105 +712,168 @@ async function submitVoice(samples, sampleRate, generation, turn) {
   const controller = new AbortController();
   voiceRequest = controller;
   const session = conversationSession;
-  setVoiceState('processing');
-  const timeout = setTimeout(() => controller.abort('timeout'), 45000);
+  setVoiceState("processing");
+  const timeout = setTimeout(() => controller.abort("timeout"), 45000);
   try {
-    const response = await fetch('/api/voice/audio', {
-      method: 'POST', headers: { 'Content-Type': 'audio/wav', 'X-Conversation-ID': session, 'X-Turn-ID': String(turn) },
-      body: encodeWav(samples, sampleRate), signal: controller.signal,
+    const response = await fetch("/api/voice/audio", {
+      method: "POST",
+      headers: {
+        "Content-Type": "audio/wav",
+        "X-Conversation-ID": session,
+        "X-Turn-ID": String(turn),
+      },
+      body: encodeWav(samples, sampleRate),
+      signal: controller.signal,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const data = await response.json();
     if (generation !== voiceGeneration || turn !== voiceTurn) return;
-    if (data.cancelled) { endConversation('SESIÓN FINALIZADA · VUELVE A TOCAR'); return; }
-    if (data.transcript) console.log('[voice] heard:', data.transcript);
-    if (!isTalking) setVoiceState('listening', data.transcript ? '' : 'NO TE HE ENTENDIDO · REPITE');
+    if (data.cancelled) {
+      endConversation("SESIÓN FINALIZADA · VUELVE A TOCAR");
+      return;
+    }
+    if (data.transcript) console.log("[voice] heard:", data.transcript);
+    if (!isTalking)
+      setVoiceState(
+        "listening",
+        data.transcript ? "" : "NO TE HE ENTENDIDO · REPITE",
+      );
   } catch (error) {
     if (generation !== voiceGeneration || turn !== voiceTurn) return;
     // A failed request may still finish on the server: invalidate its turn.
     voiceTurn++;
-    setVoiceState('error', error.name === 'AbortError' ? 'LA RESPUESTA TARDA · REPITE' : 'ERROR DE CONEXIÓN · REPITE');
-    sendJSON({ type: 'voice_error', error: `conversation: ${error.message}` });
+    setVoiceState(
+      "error",
+      error.name === "AbortError"
+        ? "LA RESPUESTA TARDA · REPITE"
+        : "ERROR DE CONEXIÓN · REPITE",
+    );
+    sendJSON({ type: "voice_error", error: `conversation: ${error.message}` });
   } finally {
     clearTimeout(timeout);
     if (voiceRequest === controller) voiceRequest = null;
   }
 }
 
-function endConversation(message = '') {
+function endConversation(message = "") {
   voiceGeneration++;
   conversationStarting = false;
   conversationActive = false;
   voiceRequest?.abort();
   voiceRequest = null;
   stopSpeaking();
-  if (conversationSession) sendJSON({ type: 'conversation', session: conversationSession, active: false });
+  if (conversationSession)
+    sendJSON({
+      type: "conversation",
+      session: conversationSession,
+      active: false,
+    });
   conversationSession = null;
-  if (voiceNode) { voiceNode.port.onmessage = null; voiceNode.disconnect(); voiceNode = null; }
-  if (micSource) { micSource.disconnect(); micSource = null; }
-  micStream?.getTracks().forEach(track => { track.onended = null; track.stop(); });
+  if (voiceNode) {
+    voiceNode.port.onmessage = null;
+    voiceNode.disconnect();
+    voiceNode = null;
+  }
+  if (micSource) {
+    micSource.disconnect();
+    micSource = null;
+  }
+  micStream?.getTracks().forEach((track) => {
+    track.onended = null;
+    track.stop();
+  });
   micStream = null;
-  if (audioContext) { audioContext.onstatechange = null; audioContext.close().catch(() => {}); audioContext = null; }
-  talkBtn.style.setProperty('--voice-level', '0.12');
-  Pepon.setState('idle');
-  setVoiceState(message ? 'error' : 'idle', message);
+  if (audioContext) {
+    audioContext.onstatechange = null;
+    audioContext.close().catch(() => {});
+    audioContext = null;
+  }
+  talkBtn.style.setProperty("--voice-level", "0.12");
+  Pepon.setState("idle");
+  setVoiceState(message ? "error" : "idle", message);
 }
 
-talkBtn.addEventListener('click', () => {
+talkBtn.addEventListener("click", () => {
   audioUnlocked = true;
   if (conversationActive || conversationStarting) endConversation();
   else startConversation();
 });
-window.addEventListener('pagehide', () => endConversation());
-document.addEventListener('visibilitychange', () => { if (document.hidden) endConversation(); });
+window.addEventListener("pagehide", () => endConversation());
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) endConversation();
+});
 
 // Persistent errands and quiet mode. Notices wait until audio has been
 // unlocked and no user turn is being captured/processed/spoken.
 let assistantState = { quiet: false, watches: [], notifications: [] };
 let activeNotice = null;
 const completedNotices = new Set();
-const quietToggle = document.getElementById('quiet-toggle');
-const noticeButton = document.getElementById('notice-btn');
+const quietToggle = document.getElementById("quiet-toggle");
+const noticeButton = document.getElementById("notice-btn");
 
 async function refreshAssistant() {
   try {
-    const response = await fetch('/api/assistant');
+    const response = await fetch("/api/assistant");
     if (!response.ok) return;
     assistantState = await response.json();
     quietToggle.checked = assistantState.quiet;
-    const list = document.getElementById('watch-list');
+    const list = document.getElementById("watch-list");
     list.replaceChildren();
-    document.getElementById('watch-count').textContent = `${assistantState.watches.length} ENCARGOS`;
+    document.getElementById("watch-count").textContent =
+      `${assistantState.watches.length} ENCARGOS`;
     for (const watch of assistantState.watches) {
-      const item = document.createElement('li');
-      const description = document.createElement('span');
+      const item = document.createElement("li");
+      const description = document.createElement("span");
       description.textContent = watch.label || watch.object;
-      const cancel = document.createElement('button');
-      cancel.type = 'button'; cancel.textContent = '×';
-      cancel.setAttribute('aria-label', `Cancelar: ${description.textContent}`);
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "×";
+      cancel.setAttribute("aria-label", `Cancelar: ${description.textContent}`);
       cancel.onclick = async () => {
         try {
-          const result = await fetch(`/api/assistant/watches/${watch.id}`, { method: 'DELETE' });
-          if (!result.ok) throw new Error('cancel');
+          const result = await fetch(`/api/assistant/watches/${watch.id}`, {
+            method: "DELETE",
+          });
+          if (!result.ok) throw new Error("cancel");
           refreshAssistant();
-        } catch { voiceStatus.textContent = 'NO SE HA PODIDO CANCELAR'; }
+        } catch {
+          voiceStatus.textContent = "NO SE HA PODIDO CANCELAR";
+        }
       };
-      item.append(description, cancel); list.append(item);
+      item.append(description, cancel);
+      list.append(item);
     }
     if (!assistantState.watches.length) {
-      const item = document.createElement('li'); item.textContent = 'SIN ENCARGOS PENDIENTES'; list.append(item);
+      const item = document.createElement("li");
+      item.textContent = "SIN ENCARGOS PENDIENTES";
+      list.append(item);
     }
     playNextNotice();
-  } catch { /* WebSocket handles the connection indicator. */ }
+  } catch {
+    /* WebSocket handles the connection indicator. */
+  }
 }
 
 function playNextNotice() {
-  const pending = assistantState.notifications.filter(n => !completedNotices.has(n.id) &&
-    (n.kind !== 'social' || (!assistantState.quiet && Date.now() / 1000 - n.at < 20)));
+  const pending = assistantState.notifications.filter(
+    (n) =>
+      !completedNotices.has(n.id) &&
+      (n.kind !== "social" ||
+        (!assistantState.quiet && Date.now() / 1000 - n.at < 20)),
+  );
   noticeButton.hidden = !pending.length;
-  noticeButton.textContent = pending.length ? `ESCUCHAR AVISO (${pending.length})` : '';
+  noticeButton.textContent = pending.length
+    ? `ESCUCHAR AVISO (${pending.length})`
+    : "";
   if (activeNotice && !isTalking) activeNotice = null; // interrupted: keep pending
-  if (!audioUnlocked || isTalking || activeNotice || document.hidden || ['capturing', 'processing', 'starting'].includes(voiceState)) return;
+  if (
+    !audioUnlocked ||
+    isTalking ||
+    activeNotice ||
+    document.hidden ||
+    ["capturing", "processing", "starting"].includes(voiceState)
+  )
+    return;
   const notice = pending[0];
   if (!notice) return;
   activeNotice = notice.id;
@@ -705,24 +881,38 @@ function playNextNotice() {
     activeNotice = null;
     completedNotices.add(notice.id);
     try {
-      const response = await fetch(`/api/assistant/notifications/${notice.id}/ack`, { method: 'POST' });
+      const response = await fetch(
+        `/api/assistant/notifications/${notice.id}/ack`,
+        { method: "POST" },
+      );
       if (!response.ok) completedNotices.delete(notice.id);
-    } catch { completedNotices.delete(notice.id); }
+    } catch {
+      completedNotices.delete(notice.id);
+    }
     refreshAssistant();
   });
 }
 
-quietToggle.addEventListener('change', async () => {
+quietToggle.addEventListener("change", async () => {
   quietToggle.disabled = true;
   try {
-    const response = await fetch('/api/assistant/preferences', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ quiet: quietToggle.checked }),
+    const response = await fetch("/api/assistant/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quiet: quietToggle.checked }),
     });
-    if (!response.ok) throw new Error('preferences');
+    if (!response.ok) throw new Error("preferences");
     await refreshAssistant();
-  } catch { quietToggle.checked = assistantState.quiet; voiceStatus.textContent = 'NO SE HA PODIDO GUARDAR'; }
-  finally { quietToggle.disabled = false; }
+  } catch {
+    quietToggle.checked = assistantState.quiet;
+    voiceStatus.textContent = "NO SE HA PODIDO GUARDAR";
+  } finally {
+    quietToggle.disabled = false;
+  }
 });
-noticeButton.addEventListener('click', () => { audioUnlocked = true; playNextNotice(); });
+noticeButton.addEventListener("click", () => {
+  audioUnlocked = true;
+  playNextNotice();
+});
 setInterval(refreshAssistant, 3000);
 refreshAssistant();

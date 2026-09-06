@@ -16,28 +16,27 @@ import socket
 import subprocess
 import time
 from collections import deque
-from contextvars import ContextVar
 from contextlib import asynccontextmanager, suppress
-from companion import Companion, ConversationContext
+from contextvars import ContextVar
 from enum import Enum
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, Optional, Set
-
-import uvicorn
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, Response
-from fastapi.staticfiles import StaticFiles
-from PIL import Image
-from pydantic import BaseModel
+from typing import Any
 
 import actions
 import intent
+import uvicorn
 from actions import Action, ActionType, PhoneExecutor
 from agent import Agent
 from cognition.gemma_agent import GemmaAgent
+from companion import Companion, ConversationContext
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from perception import PerceptionService
+from PIL import Image
 from proprioception import MotionClassifier
+from pydantic import BaseModel
 from recorder import EpisodeRecorder
 from speech import SpeechService
 from tracking import PersonTracker
@@ -88,7 +87,7 @@ class PeponState(str, Enum):
     SURPRISED = "SURPRISED"
 
 
-connections: Set[WebSocket] = set()
+connections: set[WebSocket] = set()
 world_state = WorldState()
 companion = Companion(world_state, BASE_DIR / 'data' / 'companion.json')
 voice_sessions = {}
@@ -125,7 +124,7 @@ class FrameStats:
         self.frames_received = 0
         self.width = 0
         self.height = 0
-        self.last_frame_at: Optional[float] = None
+        self.last_frame_at: float | None = None
 
     def record(self, width: int, height: int) -> None:
         now = time.time()
@@ -159,20 +158,20 @@ class FrameStats:
 
 
 frame_stats = FrameStats()
-last_frame_jpeg: Optional[bytes] = None
+last_frame_jpeg: bytes | None = None
 
 # Detection runs on a timer against whatever the latest frame is, not on
 # every incoming frame — a nano model is fast, but there's no reason to
 # burn CPU re-detecting frames the phone barely moved between.
 DETECTION_INTERVAL_SECONDS = 0.25
-perception_service: Optional[PerceptionService] = None
+perception_service: PerceptionService | None = None
 last_detections: list = []
-last_detection_at: Optional[float] = None
+last_detection_at: float | None = None
 person_tracker = PersonTracker()
 motion_classifier = MotionClassifier()
-last_voice_heard: Optional[dict] = None  # raw STT transcript, for live debugging
-last_voice_error: Optional[dict] = None  # SpeechRecognition error, for live debugging
-speech_service: Optional[SpeechService] = None
+last_voice_heard: dict | None = None  # raw STT transcript, for live debugging
+last_voice_error: dict | None = None  # SpeechRecognition error, for live debugging
+speech_service: SpeechService | None = None
 
 
 async def load_perception_model():
@@ -584,7 +583,7 @@ async def post_voice_transcribe(request: Request):
 
 
 @app.post("/api/action")
-async def post_action(payload: Dict[str, Any]):
+async def post_action(payload: dict[str, Any]):
     """Generic action trigger for manual testing — accepts exactly the
     structured shape an Agent would produce, e.g.
     {"type": "LOOK_AT", "target": "bottle", "x": 0.61, "y": -0.1}."""

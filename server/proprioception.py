@@ -13,7 +13,6 @@ holding the phone still after a shake doesn't spam PHONE_STABLE.
 import math
 import time
 from collections import deque
-from typing import Optional
 
 GRAVITY = 9.81  # m/s^2
 
@@ -37,7 +36,7 @@ class MotionClassifier:
         """Current classified phase (STABLE/TILTED/PICKED_UP/SHAKEN)."""
         return self._last_phase
 
-    def update(self, accel_gravity: Optional[dict], orientation: Optional[dict]) -> Optional[str]:
+    def update(self, accel_gravity: dict | None, orientation: dict | None) -> str | None:
         """Feed one sample. Returns "PHONE_<PHASE>" only on a phase
         transition, else None. Missing sensors degrade gracefully —
         whatever signal is available (or none) is used."""
@@ -64,7 +63,7 @@ class MotionClassifier:
         self._last_phase = phase
         return f"PHONE_{phase}"
 
-    def _classify(self, delta, spikes, tilt_angle) -> Optional[str]:
+    def _classify(self, delta, spikes, tilt_angle) -> str | None:
         if spikes >= SHAKE_MIN_CROSSINGS:
             return "SHAKEN"
         if delta is not None and delta > PICKUP_DELTA_THRESHOLD:

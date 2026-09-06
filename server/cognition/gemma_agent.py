@@ -31,12 +31,10 @@ import asyncio
 import base64
 import json
 import time
-from typing import Optional, Tuple
-
-import httpx
-from pydantic import BaseModel, ValidationError
 
 import config
+import httpx
+from pydantic import BaseModel, ValidationError
 from world_state import WorldState
 
 # The only actions Gemma is allowed to choose. LOOK_AT/SEARCH_OBJECT map
@@ -75,8 +73,8 @@ CORRECTIVE_SUFFIX = (
 
 class GemmaDecision(BaseModel):
     action: str
-    target: Optional[str] = None
-    text: Optional[str] = None
+    target: str | None = None
+    text: str | None = None
 
 
 _RESPONSE_JSON_SCHEMA = {
@@ -154,7 +152,7 @@ class GemmaAgent:
         self._client = httpx.AsyncClient(base_url=self.base_url, timeout=timeout)
 
     async def decide(
-        self, instruction: str, world_state: WorldState, frame_jpeg: Optional[bytes] = None, history: Optional[list] = None
+        self, instruction: str, world_state: WorldState, frame_jpeg: bytes | None = None, history: list | None = None
     ) -> GemmaDecision:
         """Never raises. Returns a validated GemmaDecision, falling back
         to a safe SPEAK on any failure (Ollama down, malformed output
@@ -204,8 +202,8 @@ class GemmaAgent:
         return decision
 
     async def _ask(
-        self, user_content: str, known_objects: set, image_b64: Optional[str] = None
-    ) -> Tuple[Optional[GemmaDecision], Optional[str]]:
+        self, user_content: str, known_objects: set, image_b64: str | None = None
+    ) -> tuple[GemmaDecision | None, str | None]:
         user_message = {"role": "user", "content": user_content}
         if image_b64:
             user_message["images"] = [image_b64]
@@ -240,7 +238,7 @@ class GemmaAgent:
         return self._parse_and_validate(response, known_objects)
 
     @staticmethod
-    def _parse_and_validate(response: httpx.Response, known_objects: set) -> Tuple[Optional[GemmaDecision], Optional[str]]:
+    def _parse_and_validate(response: httpx.Response, known_objects: set) -> tuple[GemmaDecision | None, str | None]:
         try:
             raw = response.json()["message"]["content"]
             decision = GemmaDecision.model_validate_json(raw)

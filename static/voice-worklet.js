@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-import './voice-vad.js';
+import "./voice-vad.js";
 
 class VoiceProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -12,7 +12,7 @@ class VoiceProcessor extends AudioWorkletProcessor {
     this.offset = 0;
     this.speaking = false;
     this.port.onmessage = ({ data }) => {
-      if (data.type === 'speaking') {
+      if (data.type === "speaking") {
         this.speaking = data.value;
         if (data.value) this.vad.reset();
       }
@@ -25,7 +25,10 @@ class VoiceProcessor extends AudioWorkletProcessor {
         this.frame[this.offset++] = sample;
         if (this.offset === this.frame.length) {
           const result = this.vad.feed(this.frame, this.speaking);
-          this.port.postMessage(result, result.segment ? [result.segment.buffer] : []);
+          this.port.postMessage(
+            result,
+            result.segment ? [result.segment.buffer] : [],
+          );
           this.frame = new Float32Array(this.frame.length);
           this.offset = 0;
         }
@@ -35,4 +38,4 @@ class VoiceProcessor extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor('pepon-voice', VoiceProcessor);
+registerProcessor("pepon-voice", VoiceProcessor);

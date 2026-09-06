@@ -4,7 +4,8 @@
 
 """Fast, accent-insensitive commands with an optional conversational referent."""
 import re
-from vocabulary import OBJECT_ALIASES, extract_object, normalize
+
+from vocabulary import extract_object, normalize
 
 INTENT_WHAT_DO_YOU_SEE = 'WHAT_DO_YOU_SEE'
 INTENT_FIND_OBJECT = 'FIND_OBJECT'

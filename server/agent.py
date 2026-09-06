@@ -15,7 +15,7 @@ open across several detection cycles (or time out) if the object
 isn't visible yet — see check_active_target().
 """
 import asyncio
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import actions
 from cognition.gemma_agent import GemmaDecision
@@ -36,8 +36,8 @@ class Agent:
         self,
         world_state: WorldState,
         action_executor: actions.ActionExecutor,
-        recorder: Optional[EpisodeRecorder] = None,
-        frame_provider: Optional[Callable[[], Optional[bytes]]] = None,
+        recorder: EpisodeRecorder | None = None,
+        frame_provider: Callable[[], bytes | None] | None = None,
     ):
         self.world_state = world_state
         self.action_executor = action_executor
@@ -137,7 +137,7 @@ class Agent:
 
     # ---- intent handlers ----
 
-    async def _what_do_you_see(self, episode_id: Optional[str]) -> None:
+    async def _what_do_you_see(self, episode_id: str | None) -> None:
         visible = [cls for cls, m in self.world_state.objects.items() if m.visible]
         if visible:
             names = ", ".join(object_es(cls) for cls in visible)
@@ -146,7 +146,7 @@ class Agent:
             text = "Ahora mismo no veo nada."
         await self._act(actions.speak(text), episode_id)
 
-    async def _find_object(self, obj: str, episode_id: Optional[str]) -> None:
+    async def _find_object(self, obj: str, episode_id: str | None) -> None:
         memory = self.world_state.get_object(obj)
         if memory and memory.visible:
             await self._announce_found(obj, memory, episode_id)
@@ -170,10 +170,10 @@ class Agent:
         if episode_id:
             asyncio.create_task(self._timeout_search(obj, episode_id))
 
-    async def _where_is(self, obj: str, episode_id: Optional[str]) -> None:
+    async def _where_is(self, obj: str, episode_id: str | None) -> None:
         await self._act(actions.speak(self.world_state.describe(obj)), episode_id)
 
-    async def _look_at_me(self, episode_id: Optional[str]) -> bool:
+    async def _look_at_me(self, episode_id: str | None) -> bool:
         person = self.world_state.get_object("person")
         if person and person.visible:
             await self._act(actions.look_at(person.x, person.y, target="person"), episode_id)
@@ -181,7 +181,7 @@ class Agent:
         await self._act(actions.speak("Ahora mismo no te veo."), episode_id)
         return False
 
-    async def _unknown(self, episode_id: Optional[str]) -> None:
+    async def _unknown(self, episode_id: str | None) -> None:
         await self._set_expression("CONFUSED", episode_id)
         await self._act(actions.speak("Perdona, no te he entendido."), episode_id)
 
@@ -196,7 +196,7 @@ class Agent:
         await self._act(actions.speak(f"No veo {object_es(obj)}."), episode_id)
         self._end(episode_id, "timeout", f"gave up looking for {obj} after {int(FIND_TIMEOUT_SECONDS)}s")
 
-    async def _announce_found(self, obj: str, memory: ObjectMemory, episode_id: Optional[str]) -> None:
+    async def _announce_found(self, obj: str, memory: ObjectMemory, episode_id: str | None) -> None:
         # SET_EXPRESSION before LOOK_AT: on the phone, a state change resets
         # gaze to that state's default (Pepon.setState() clears manualGaze),
         # so sending LOOK_AT second is what makes the eyes actually end up
@@ -216,18 +216,18 @@ class Agent:
         )
         self.world_state.set_active_target(None)
 
-    async def _set_expression(self, state: str, episode_id: Optional[str] = None) -> None:
+    async def _set_expression(self, state: str, episode_id: str | None = None) -> None:
         """Renders SET_EXPRESSION *and* keeps world_state.pepon_state in
         sync — mirrors main.py's _set_pepon_state, kept local here to
         avoid an agent.py <-> main.py import cycle."""
         self.world_state.set_pepon_state(state)
         await self._act(actions.set_expression(state), episode_id)
 
-    async def _act(self, action: actions.Action, episode_id: Optional[str]) -> None:
+    async def _act(self, action: actions.Action, episode_id: str | None) -> None:
         await self.action_executor.execute(action)
         if self.recorder and episode_id:
             self.recorder.record_action(episode_id, action.type.value, action.params)
 
-    def _end(self, episode_id: Optional[str], status: str, detail: Optional[str] = None) -> None:
+    def _end(self, episode_id: str | None, status: str, detail: str | None = None) -> None:
         if self.recorder and episode_id:
             self.recorder.end_episode(episode_id, status, detail)

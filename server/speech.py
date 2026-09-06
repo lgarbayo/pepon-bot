@@ -7,7 +7,7 @@ The phone's AudioWorklet handles capture and voice activity; this service
 also accepts older MediaRecorder containers through PyAV decoding.
 """
 import io
-from typing import BinaryIO, Union
+from typing import BinaryIO
 
 import config
 
@@ -18,7 +18,9 @@ class SpeechService:
     compatible GPU) — a slower transcription still beats a crash."""
 
     def __init__(self):
-        from faster_whisper import WhisperModel  # local import: keep ctranslate2 out of every other module
+        from faster_whisper import (
+            WhisperModel,  # local import: keep ctranslate2 out of every other module
+        )
 
         try:
             self._model = WhisperModel(config.WHISPER_MODEL, device="cuda", compute_type="float16")
@@ -28,7 +30,7 @@ class SpeechService:
             self._model = WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
             self.device = "cpu"
 
-    def transcribe(self, audio_bytes: Union[bytes, BinaryIO]) -> str:
+    def transcribe(self, audio_bytes: bytes | BinaryIO) -> str:
         """Blocking — call via asyncio.to_thread. Accepts whatever
         container MediaRecorder produced (webm/opus, mp4/aac, ...);
         faster-whisper decodes it via PyAV, no format-specific handling

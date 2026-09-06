@@ -16,9 +16,10 @@ produces them — would need to change.
 Deliberately small: one Action shape, one executor interface, no
 routing/registry/plugin machinery.
 """
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any
 
 
 class ActionType(str, Enum):
@@ -33,7 +34,7 @@ class ActionType(str, Enum):
 @dataclass
 class Action:
     type: ActionType
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         """Flat structured form, e.g. {"type": "LOOK_AT", "x": 0.61, ...} —
@@ -44,8 +45,8 @@ class Action:
 
 # ---- convenience constructors: what Agent/World code actually calls ----
 
-def look_at(x: float, y: float, target: Optional[str] = None) -> Action:
-    params: Dict[str, Any] = {"x": round(x, 3), "y": round(y, 3)}
+def look_at(x: float, y: float, target: str | None = None) -> Action:
+    params: dict[str, Any] = {"x": round(x, 3), "y": round(y, 3)}
     if target is not None:
         params["target"] = target
     return Action(ActionType.LOOK_AT, params)

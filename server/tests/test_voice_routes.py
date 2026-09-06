@@ -10,12 +10,13 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import main
 from actions import PhoneExecutor
 from agent import Agent
-from companion import Companion, ConversationContext
 from cognition.gemma_agent import GemmaDecision
+from companion import Companion, ConversationContext
 from world_state import WorldState
 
 

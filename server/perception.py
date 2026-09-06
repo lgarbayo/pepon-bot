@@ -9,10 +9,9 @@ without changing any caller.
 """
 from dataclasses import dataclass
 from io import BytesIO
-from typing import List
+from pathlib import Path
 
 from PIL import Image
-from pathlib import Path
 
 # Full COCO vocabulary; vocabulary.py shares all 80 Spanish names and aliases.
 CONFIDENCE_THRESHOLD = 0.4
@@ -24,7 +23,7 @@ class Detection:
     confidence: float
     x: float  # bbox-center, normalized -1 (left) .. 1 (right)
     y: float  # bbox-center, normalized -1 (top) .. 1 (bottom)
-    bbox: List[float]  # [x1, y1, x2, y2] in source-frame pixel coords
+    bbox: list[float]  # [x1, y1, x2, y2] in source-frame pixel coords
 
     def as_dict(self) -> dict:
         return {
@@ -41,17 +40,19 @@ class PerceptionService:
     only this class — callers just get back a list of Detection."""
 
     def __init__(self):
-        from ultralytics import YOLO  # local import: keep torch out of every other module
+        from ultralytics import (
+            YOLO,  # local import: keep torch out of every other module
+        )
 
         self._model = YOLO(str(Path(__file__).resolve().parent.parent / "yolov8n.pt"))
 
-    def detect(self, jpeg_bytes: bytes) -> List[Detection]:
+    def detect(self, jpeg_bytes: bytes) -> list[Detection]:
         image = Image.open(BytesIO(jpeg_bytes)).convert("RGB")
         width, height = image.size
 
         results = self._model.predict(image, verbose=False, conf=CONFIDENCE_THRESHOLD)
 
-        detections: List[Detection] = []
+        detections: list[Detection] = []
         for result in results:
             for box in result.boxes:
                 cls_name = result.names[int(box.cls[0])]

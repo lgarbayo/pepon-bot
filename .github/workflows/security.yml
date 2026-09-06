@@ -10,7 +10,12 @@ on:
 jobs:
   scorecard:
     runs-on: ubuntu-latest
+    # A job-level `permissions:` block REPLACES the workflow-level default
+    # entirely for that job rather than adding to it — `contents: read` must
+    # be repeated here, or `actions/checkout` fails with "Repository not
+    # found" (the token has no read access at all).
     permissions:
+      contents: read
       security-events: write
       id-token: write
     steps:
@@ -26,6 +31,7 @@ jobs:
   codeql:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       security-events: write
     strategy:
       matrix:

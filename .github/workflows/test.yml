@@ -18,7 +18,16 @@ jobs:
           node-version: 22
 
       - name: Install Python dependencies
-        run: pip install -r requirements.txt pytest playwright
+        run: |
+          # `ultralytics` (a requirements.txt dep) pulls a GPU-enabled torch
+          # by default on Linux, whose own bundled CUDA wheels alone are
+          # >2GB — combined with the CUDA 12 runtime pinned below for
+          # faster-whisper, that exceeds the runner's free disk space. The
+          # runner has no GPU anyway and the test suite never loads a real
+          # YOLO/Whisper model, so install CPU-only torch first; pip then
+          # finds it already satisfied when resolving ultralytics.
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt pytest playwright
 
       - name: Run pytest (server/tests)
         run: cd server && python3 -m pytest tests -q

@@ -12,7 +12,6 @@ enough to convincingly follow one person around a frame; swap for a
 real multi-object tracker later without touching the caller.
 """
 import time
-from typing import List, Optional, Tuple
 
 TRACK_CONFIDENCE_THRESHOLD = 0.55  # stricter than the general detection threshold
 MAX_ASSOCIATION_DISTANCE = 0.6  # normalized units a "same" target may move between cycles
@@ -21,17 +20,17 @@ EMA_ALPHA_RETURN = 0.15  # slower ease back to neutral once the target is lost
 LOST_GRACE_SECONDS = 0.8  # brief pause before easing back, so one missed frame doesn't jolt the eyes
 NEUTRAL_EPSILON = 0.03  # close enough to center to stop sending updates
 
-Point = Tuple[float, float]
+Point = tuple[float, float]
 
 
 class PersonTracker:
     def __init__(self):
-        self._smoothed: Optional[Point] = None
-        self._raw_target: Optional[Point] = None
-        self._last_seen_at: Optional[float] = None
+        self._smoothed: Point | None = None
+        self._raw_target: Point | None = None
+        self._last_seen_at: float | None = None
         self._at_neutral = True
 
-    def update(self, detections: List[dict]) -> Optional[Point]:
+    def update(self, detections: list[dict]) -> Point | None:
         """Feed the latest detections; returns (x, y) to look_at, or None
         if nothing should be sent this cycle."""
         now = time.time()
@@ -60,7 +59,7 @@ class PersonTracker:
             self._raw_target = None
         return self._smoothed
 
-    def _pick_candidate(self, people: List[dict]) -> Optional[dict]:
+    def _pick_candidate(self, people: list[dict]) -> dict | None:
         if not people:
             return None
         if self._raw_target is not None:
@@ -73,7 +72,7 @@ class PersonTracker:
         return max(people, key=lambda p: p["confidence"])
 
 
-def _ema(previous: Optional[Point], sample: Point, alpha: float) -> Point:
+def _ema(previous: Point | None, sample: Point, alpha: float) -> Point:
     if previous is None:
         return sample
     return (

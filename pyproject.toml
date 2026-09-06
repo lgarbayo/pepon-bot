@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Deliberately explicit instead of trusting ruff's own "default" selection,
+# which has changed between minor versions (0.15 -> 0.16 silently added the
+# pyupgrade "UP" rules) and broke CI without any change to this repo.
+#   E4/E7/E9 + F — pycodestyle/pyflakes baseline (PEP 8, unused names, ...)
+#   UP          — pyupgrade: modern typing syntax, safe for Python 3.11+
+#   I           — isort: consistent import ordering
+select = ["E4", "E7", "E9", "F", "UP", "I"]
+ignore = [
+    "UP042",  # ActionType/PeponState -> enum.StrEnum: both are serialized
+              # over the WebSocket wire; ruff flags this as an *unsafe* fix
+              # for a reason, and str-Enum's exact __str__/JSON-encoding
+              # behavior isn't worth risking for a purely cosmetic change.
+]
+# NOT enabled: BLE (flake8-blind-except). Several places in server/ (frame
+# decode, WebSocket broadcast, LAN IP detection, the recorder's write loop)
+# deliberately catch `Exception` broadly to degrade gracefully instead of
+# crashing the whole app over one bad frame or a dropped socket — that's a
+# design choice, not an oversight, and narrowing them would work against it.

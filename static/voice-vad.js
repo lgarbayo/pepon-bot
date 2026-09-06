@@ -19,17 +19,27 @@ class PeponVAD {
     this.durationMs = 0;
   }
   feed(samples, speaking = false) {
-    const ms = samples.length / this.sampleRate * 1000;
-    const rms = Math.sqrt(samples.reduce((sum, x) => sum + x * x, 0) / samples.length);
-    const threshold = Math.max(speaking ? 0.035 : 0.012, this.noise * (speaking ? 5 : 3));
+    const ms = (samples.length / this.sampleRate) * 1000;
+    const rms = Math.sqrt(
+      samples.reduce((sum, x) => sum + x * x, 0) / samples.length,
+    );
+    const threshold = Math.max(
+      speaking ? 0.035 : 0.012,
+      this.noise * (speaking ? 5 : 3),
+    );
     const voiced = rms > threshold;
-    const result = { level: Math.min(1, rms * 10), started: false, segment: null };
+    const result = {
+      level: Math.min(1, rms * 10),
+      started: false,
+      segment: null,
+    };
     if (!this.frames) {
-      if (!voiced && !speaking) this.noise = Math.min(0.025, this.noise * 0.98 + rms * 0.02);
+      if (!voiced && !speaking)
+        this.noise = Math.min(0.025, this.noise * 0.98 + rms * 0.02);
       this.pre.push(samples);
       this.preMs += ms;
       while (this.preMs > 420 && this.pre.length > 1) {
-        this.preMs -= this.pre.shift().length / this.sampleRate * 1000;
+        this.preMs -= (this.pre.shift().length / this.sampleRate) * 1000;
       }
       this.onsetMs = voiced ? this.onsetMs + ms : 0;
       if (this.onsetMs >= (speaking ? 280 : 160)) {
@@ -48,7 +58,10 @@ class PeponVAD {
         const length = this.frames.reduce((n, frame) => n + frame.length, 0);
         result.segment = new Float32Array(length);
         let offset = 0;
-        for (const frame of this.frames) { result.segment.set(frame, offset); offset += frame.length; }
+        for (const frame of this.frames) {
+          result.segment.set(frame, offset);
+          offset += frame.length;
+        }
         this.reset();
       }
     }

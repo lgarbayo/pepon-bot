@@ -19,15 +19,18 @@
   --gb-darkest: #9bbc0f; /* "ink" — borders, pupils, text */
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
   background: var(--gb-lightest);
   color: var(--gb-darkest);
-  font-family: 'Press Start 2P', monospace;
+  font-family: "Press Start 2P", monospace;
   -webkit-font-smoothing: none;
   font-smooth: never;
   image-rendering: pixelated;
@@ -68,8 +71,14 @@ html, body {
 }
 
 @keyframes blink-hard {
-  0%, 49% { background: var(--gb-darkest); }
-  50%, 100% { background: var(--gb-lightest); }
+  0%,
+  49% {
+    background: var(--gb-darkest);
+  }
+  50%,
+  100% {
+    background: var(--gb-lightest);
+  }
 }
 
 /* ---------- Face ---------- */
@@ -93,7 +102,16 @@ html, body {
   overflow: hidden;
   /* A stepped octagon reads as a "pixelated circle" — chunky corners
      instead of a smooth curve. */
-  clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+  clip-path: polygon(
+    30% 0%,
+    70% 0%,
+    100% 30%,
+    100% 70%,
+    70% 100%,
+    30% 100%,
+    0% 70%,
+    0% 30%
+  );
   /* Flat-color, zero-blur, multi-directional shadow fakes a thick pixel
      outline — a soft blurred glow would read as "neon", not pixel art. */
   box-shadow:
@@ -101,7 +119,9 @@ html, body {
     -4px 0 0 var(--accent, var(--gb-darkest)),
     0 4px 0 var(--accent, var(--gb-darkest)),
     0 -4px 0 var(--accent, var(--gb-darkest));
-  transition: transform 0.2s steps(3, end), box-shadow 0.2s steps(3, end);
+  transition:
+    transform 0.2s steps(3, end),
+    box-shadow 0.2s steps(3, end);
 }
 
 /* Blink lives on its own wrapper so it can animate scaleY without
@@ -150,7 +170,10 @@ html, body {
   height: 34px;
   background: var(--gb-darkest);
   border: 3px solid var(--accent, var(--gb-darkest));
-  transition: width 0.2s steps(3, end), height 0.2s steps(3, end), border-color 0.2s steps(3, end);
+  transition:
+    width 0.2s steps(3, end),
+    height 0.2s steps(3, end),
+    border-color 0.2s steps(3, end);
 }
 
 /* ---------- States ---------- */
@@ -158,33 +181,84 @@ html, body {
    shape/size/motion (already on each rule) plus the text label under
    the face, never by color, to stay inside a real Game Boy's palette. */
 
-#face.state-idle { --accent: var(--gb-dark); }
-#face.state-idle .eye { transform: scale(1); }
-#face.state-idle .pupil { width: 34px; height: 34px; }
+#face.state-idle {
+  --accent: var(--gb-dark);
+}
+#face.state-idle .eye {
+  transform: scale(1);
+}
+#face.state-idle .pupil {
+  width: 34px;
+  height: 34px;
+}
 
-#face.state-listening { --accent: var(--gb-darkest); }
-#face.state-listening .eye { transform: scale(1.06); }
-#face.state-listening .pupil { width: 44px; height: 44px; }
+#face.state-listening {
+  --accent: var(--gb-darkest);
+}
+#face.state-listening .eye {
+  transform: scale(1.06);
+}
+#face.state-listening .pupil {
+  width: 44px;
+  height: 44px;
+}
 
-#face.state-thinking { --accent: var(--gb-light); }
-#face.state-thinking .eye { transform: scale(1); }
-#face.state-thinking .pupil { width: 34px; height: 34px; }
+#face.state-thinking {
+  --accent: var(--gb-light);
+}
+#face.state-thinking .eye {
+  transform: scale(1);
+}
+#face.state-thinking .pupil {
+  width: 34px;
+  height: 34px;
+}
 
-#face.state-searching { --accent: var(--gb-dark); }
-#face.state-searching .eye { transform: scaleY(0.85); }
-#face.state-searching .pupil { width: 32px; height: 32px; }
+#face.state-searching {
+  --accent: var(--gb-dark);
+}
+#face.state-searching .eye {
+  transform: scaleY(0.85);
+}
+#face.state-searching .pupil {
+  width: 32px;
+  height: 32px;
+}
 
-#face.state-found { --accent: var(--gb-darkest); --pop-scale: 1.1; }
-#face.state-found .eye { transform: scale(var(--pop-scale)); }
-#face.state-found .pupil { width: 46px; height: 46px; }
+#face.state-found {
+  --accent: var(--gb-darkest);
+  --pop-scale: 1.1;
+}
+#face.state-found .eye {
+  transform: scale(var(--pop-scale));
+}
+#face.state-found .pupil {
+  width: 46px;
+  height: 46px;
+}
 
-#face.state-confused { --accent: var(--gb-dark); }
-#face.state-confused .eye { transform: scale(1); }
-#face.state-confused .pupil { width: 30px; height: 30px; }
+#face.state-confused {
+  --accent: var(--gb-dark);
+}
+#face.state-confused .eye {
+  transform: scale(1);
+}
+#face.state-confused .pupil {
+  width: 30px;
+  height: 30px;
+}
 
-#face.state-surprised { --accent: var(--gb-darkest); --pop-scale: 1.18; }
-#face.state-surprised .eye { transform: scale(var(--pop-scale)); }
-#face.state-surprised .pupil { width: 24px; height: 24px; }
+#face.state-surprised {
+  --accent: var(--gb-darkest);
+  --pop-scale: 1.18;
+}
+#face.state-surprised .eye {
+  transform: scale(var(--pop-scale));
+}
+#face.state-surprised .pupil {
+  width: 24px;
+  height: 24px;
+}
 
 /* One-shot "pop" bounce when a state wants a startled entrance (FOUND,
    SURPRISED). Ends at that state's own --pop-scale, so removing the
@@ -195,28 +269,54 @@ html, body {
 }
 
 @keyframes blink-anim {
-  0%, 100% { transform: scaleY(1); }
-  50% { transform: scaleY(0.05); }
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.05);
+  }
 }
 
 @keyframes pop-anim {
-  0% { transform: scale(1); }
-  40% { transform: scale(calc(var(--pop-scale, 1.1) * 1.15)); }
-  100% { transform: scale(var(--pop-scale, 1.1)); }
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(calc(var(--pop-scale, 1.1) * 1.15));
+  }
+  100% {
+    transform: scale(var(--pop-scale, 1.1));
+  }
 }
 
 @keyframes wiggle {
-  0%, 100% { transform: rotate(-3deg); }
-  50% { transform: rotate(3deg); }
+  0%,
+  100% {
+    transform: rotate(-3deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
 }
 
 /* Quick disoriented spin, layered on top of the CONFUSED wiggle. */
 @keyframes dizzy-anim {
-  0% { transform: rotate(0deg); }
-  25% { transform: rotate(100deg); }
-  50% { transform: rotate(200deg); }
-  75% { transform: rotate(280deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(100deg);
+  }
+  50% {
+    transform: rotate(200deg);
+  }
+  75% {
+    transform: rotate(280deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 #state-label {
@@ -239,7 +339,8 @@ html, body {
   gap: 16px;
 }
 
-#talk-btn, #camera-switch-btn {
+#talk-btn,
+#camera-switch-btn {
   -webkit-appearance: none;
   appearance: none;
   padding: 0;
@@ -257,7 +358,9 @@ html, body {
   background: var(--gb-lightest);
   display: grid;
   place-items: center;
-  box-shadow: 0 0 0 4px var(--gb-lightest), 0 0 0 5px var(--gb-light);
+  box-shadow:
+    0 0 0 4px var(--gb-lightest),
+    0 0 0 5px var(--gb-light);
 }
 
 .voice-orb {
@@ -269,10 +372,21 @@ html, body {
   transition: transform 160ms steps(3, end);
 }
 
-.orb-shell { position: absolute; inset: 0; width: 100%; height: 100%; }
-.orb-body { fill: var(--gb-light); }
-.orb-shade { fill: var(--gb-dark); }
-.orb-glint { fill: var(--gb-darkest); }
+.orb-shell {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.orb-body {
+  fill: var(--gb-light);
+}
+.orb-shade {
+  fill: var(--gb-dark);
+}
+.orb-glint {
+  fill: var(--gb-darkest);
+}
 
 .orb-wave {
   display: flex;
@@ -291,9 +405,17 @@ html, body {
   transform-origin: center;
 }
 
-.orb-wave i:nth-child(2), .orb-wave i:nth-child(6) { height: 16px; }
-.orb-wave i:nth-child(3), .orb-wave i:nth-child(5) { height: 24px; }
-.orb-wave i:nth-child(4) { height: 32px; }
+.orb-wave i:nth-child(2),
+.orb-wave i:nth-child(6) {
+  height: 16px;
+}
+.orb-wave i:nth-child(3),
+.orb-wave i:nth-child(5) {
+  height: 24px;
+}
+.orb-wave i:nth-child(4) {
+  height: 32px;
+}
 
 #talk-hint {
   font-size: 8px;
@@ -302,25 +424,36 @@ html, body {
   white-space: nowrap;
 }
 
-#talk-btn:active .voice-orb { transform: scale(0.9); }
+#talk-btn:active .voice-orb {
+  transform: scale(0.9);
+}
 
-#talk-btn:focus-visible, #camera-switch-btn:focus-visible {
+#talk-btn:focus-visible,
+#camera-switch-btn:focus-visible {
   outline: 2px solid var(--gb-darkest);
   outline-offset: 8px;
 }
 
 #talk-btn.listening {
   border-color: var(--gb-darkest);
-  box-shadow: 0 0 0 4px var(--gb-lightest), 0 0 0 6px var(--gb-dark);
+  box-shadow:
+    0 0 0 4px var(--gb-lightest),
+    0 0 0 6px var(--gb-dark);
 }
 
 #talk-btn.listening .orb-wave i {
   transform: scaleY(var(--voice-level, 0.12));
 }
 
-#talk-btn.listening .orb-wave i:nth-child(2n) { animation-delay: -240ms; }
-#talk-btn.listening .orb-wave i:nth-child(3n) { animation-delay: -480ms; }
-#talk-btn.listening .orb-wave i:nth-child(4) { animation-delay: -720ms; }
+#talk-btn.listening .orb-wave i:nth-child(2n) {
+  animation-delay: -240ms;
+}
+#talk-btn.listening .orb-wave i:nth-child(3n) {
+  animation-delay: -480ms;
+}
+#talk-btn.listening .orb-wave i:nth-child(4) {
+  animation-delay: -720ms;
+}
 
 #talk-btn[data-voice-state="speaking"] .orb-wave i {
   animation: voice-wave 960ms steps(4, end) infinite;
@@ -330,9 +463,18 @@ html, body {
   animation: orb-think 2s steps(8, end) infinite;
 }
 
-#talk-btn[data-voice-state="processing"] .orb-wave i { transform: scaleY(0.2); }
-#talk-btn[data-voice-state="error"] { border-style: dashed; border-color: var(--gb-darkest); }
-@keyframes orb-think { to { transform: rotate(360deg); } }
+#talk-btn[data-voice-state="processing"] .orb-wave i {
+  transform: scaleY(0.2);
+}
+#talk-btn[data-voice-state="error"] {
+  border-style: dashed;
+  border-color: var(--gb-darkest);
+}
+@keyframes orb-think {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 #voice-status {
   min-height: 12px;
@@ -365,25 +507,81 @@ html, body {
   line-height: 1.8;
   background: var(--gb-lightest);
 }
-#companion-panel summary { cursor: pointer; min-height: 32px; }
-#watch-count { font-size: 6px; margin-left: 8px; }
-#companion-panel[open] { padding: 12px; border: 2px solid var(--gb-light); max-height: 45vh; overflow: auto; }
-#companion-panel label { display: flex; align-items: center; min-height: 44px; gap: 8px; }
-#quiet-toggle { accent-color: var(--gb-darkest); width: 20px; height: 20px; }
-#companion-panel p { font-family: monospace; font-size: 12px; }
-#watch-list { list-style: none; padding: 0; margin: 12px 0 0; }
-#watch-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
-#watch-list button, #notice-btn {
-  font: inherit; color: var(--gb-darkest); background: var(--gb-lightest);
-  border: 2px solid var(--gb-light); cursor: pointer; min-height: 44px;
+#companion-panel summary {
+  cursor: pointer;
+  min-height: 32px;
 }
-#watch-list button { min-width: 44px; font-size: 20px; }
-#notice-btn { position: fixed; top: 116px; left: 16px; padding: 8px; font-size: 7px; z-index: 2; }
-#camera-switch-btn:disabled { opacity: 0.6; cursor: wait; }
+#watch-count {
+  font-size: 6px;
+  margin-left: 8px;
+}
+#companion-panel[open] {
+  padding: 12px;
+  border: 2px solid var(--gb-light);
+  max-height: 45vh;
+  overflow: auto;
+}
+#companion-panel label {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 8px;
+}
+#quiet-toggle {
+  accent-color: var(--gb-darkest);
+  width: 20px;
+  height: 20px;
+}
+#companion-panel p {
+  font-family: monospace;
+  font-size: 12px;
+}
+#watch-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+#watch-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+#watch-list button,
+#notice-btn {
+  font: inherit;
+  color: var(--gb-darkest);
+  background: var(--gb-lightest);
+  border: 2px solid var(--gb-light);
+  cursor: pointer;
+  min-height: 44px;
+}
+#watch-list button {
+  min-width: 44px;
+  font-size: 20px;
+}
+#notice-btn {
+  position: fixed;
+  top: 116px;
+  left: 16px;
+  padding: 8px;
+  font-size: 7px;
+  z-index: 2;
+}
+#camera-switch-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
 
 @keyframes voice-wave {
-  0%, 100% { transform: scaleY(0.5); }
-  50% { transform: scaleY(1.25); }
+  0%,
+  100% {
+    transform: scaleY(0.5);
+  }
+  50% {
+    transform: scaleY(1.25);
+  }
 }
 
 #camera-switch-btn {
@@ -400,9 +598,20 @@ html, body {
   box-shadow: 2px 2px 0 var(--gb-light);
 }
 
-#camera-switch-btn svg { width: 32px; height: 32px; }
-.camera-body { fill: none; stroke: currentColor; stroke-width: 2; }
-.camera-arrows { fill: none; stroke: currentColor; stroke-width: 2; }
+#camera-switch-btn svg {
+  width: 32px;
+  height: 32px;
+}
+.camera-body {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.camera-arrows {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
 
 #camera-switch-btn:active {
   background: var(--gb-light);
@@ -411,38 +620,97 @@ html, body {
 }
 
 @media (hover: hover) {
-  #talk-btn:hover, #camera-switch-btn:hover { border-color: var(--gb-darkest); }
+  #talk-btn:hover,
+  #camera-switch-btn:hover {
+    border-color: var(--gb-darkest);
+  }
 }
 
 @media (max-width: 360px) {
-  #status-bar { left: 16px; transform: none; font-size: 8px; }
+  #status-bar {
+    left: 16px;
+    transform: none;
+    font-size: 8px;
+  }
 }
 
 @media (min-height: 481px) and (max-height: 700px) {
-  #face, #state-label { position: relative; top: -70px; }
+  #face,
+  #state-label {
+    position: relative;
+    top: -70px;
+  }
 }
 
 @media (min-height: 481px) and (max-height: 600px) {
-  #face, #state-label { top: -90px; }
-  .eye { width: 80px; height: 80px; }
-  #face { gap: 40px; }
-  #speech-caption { bottom: 210px; max-height: 44px; }
+  #face,
+  #state-label {
+    top: -90px;
+  }
+  .eye {
+    width: 80px;
+    height: 80px;
+  }
+  #face {
+    gap: 40px;
+  }
+  #speech-caption {
+    bottom: 210px;
+    max-height: 44px;
+  }
 }
 
 @media (max-height: 480px) {
-  #voice-control { left: auto; right: max(24px, env(safe-area-inset-right)); transform: none; bottom: max(16px, env(safe-area-inset-bottom)); }
-  #talk-btn { width: 72px; height: 72px; }
-  .voice-orb { width: 60px; height: 60px; }
-  .orb-wave { transform: scale(0.75); }
-  #talk-hint { font-size: 6px; letter-spacing: 0; }
-  #face, #state-label { margin-right: 120px; }
-  #voice-status { max-width: 130px; font-size: 6px; }
-  #speech-caption { left: 24px; transform: none; bottom: 20px; width: calc(100vw - 210px); max-height: 54px; }
-  #companion-panel { top: 60px; width: 200px; }
+  #voice-control {
+    left: auto;
+    right: max(24px, env(safe-area-inset-right));
+    transform: none;
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  #talk-btn {
+    width: 72px;
+    height: 72px;
+  }
+  .voice-orb {
+    width: 60px;
+    height: 60px;
+  }
+  .orb-wave {
+    transform: scale(0.75);
+  }
+  #talk-hint {
+    font-size: 6px;
+    letter-spacing: 0;
+  }
+  #face,
+  #state-label {
+    margin-right: 120px;
+  }
+  #voice-status {
+    max-width: 130px;
+    font-size: 6px;
+  }
+  #speech-caption {
+    left: 24px;
+    transform: none;
+    bottom: 20px;
+    width: calc(100vw - 210px);
+    max-height: 54px;
+  }
+  #companion-panel {
+    top: 60px;
+    width: 200px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #talk-btn.listening .orb-wave i { animation: none; }
-  #talk-btn[data-voice-state="processing"] .orb-shell { animation: none; }
-  .voice-orb { transition: none; }
+  #talk-btn.listening .orb-wave i {
+    animation: none;
+  }
+  #talk-btn[data-voice-state="processing"] .orb-shell {
+    animation: none;
+  }
+  .voice-orb {
+    transition: none;
+  }
 }
