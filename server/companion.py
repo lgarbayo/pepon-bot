@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Local persistent errands, conversational context and restrained initiative."""
 import asyncio
 import json

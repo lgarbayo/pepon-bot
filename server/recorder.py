@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """EpisodeRecorder — records one meaningful voice interaction as a
 small, structured episode on disk. Built for later inspection (and,
 someday, imitation-learning experiments) — no training pipeline here,

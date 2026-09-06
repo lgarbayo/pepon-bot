@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Fast, accent-insensitive commands with an optional conversational referent."""
 import re
 from vocabulary import OBJECT_ALIASES, extract_object, normalize

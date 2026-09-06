@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """GemmaAgent — Pepon's semantic reasoning/planning layer.
 
 Sits between intent.py's deterministic parser and the existing

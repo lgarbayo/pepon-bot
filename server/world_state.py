@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Pepon's short-term memory of what it currently perceives.
 
 This is NOT a database or a knowledge graph — just enough recent state

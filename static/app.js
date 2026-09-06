@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+//
+// SPDX-License-Identifier: MIT
+
 // ---------- Pepon's virtual eyes ----------
 // Frontend API: Pepon.setState(name), Pepon.lookAt(x, y), Pepon.blink()
 // x/y are normalized to [-1, 1] (left/up = -1, right/down = 1).

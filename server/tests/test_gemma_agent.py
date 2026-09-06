@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Essential tests for GemmaAgent's response parsing/validation and
 failure behavior — not testing Ollama itself, just that malformed or
 disallowed model output never reaches Agent unvalidated, and that a

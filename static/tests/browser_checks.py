@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Headless UI integration with real AudioWorklet and synthetic microphone.
 Run from repository root: python3 static/tests/browser_checks.py
 No GPU models or physical recording; HTTP/WS/TTS are controlled fixtures.

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+//
+// SPDX-License-Identifier: MIT
+
 // Energy VAD with adaptive noise floor, onset confirmation and pre-roll.
 // Pure signal logic, shared by the AudioWorklet and deterministic tests.
 class PeponVAD {

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """PeponBot: HTTPS phone UI, fresh camera perception and local voice.
 
 AudioWorklet sends PCM/WAV utterances after a natural pause. Whisper and

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """One bilingual vocabulary for all 80 COCO classes, display and parsing."""
 import re
 import unicodedata

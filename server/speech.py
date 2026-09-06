@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Local Whisper transcription for pause-delimited PCM/WAV utterances.
 The phone's AudioWorklet handles capture and voice activity; this service
 also accepts older MediaRecorder containers through PyAV decoding.

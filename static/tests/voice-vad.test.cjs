@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+//
+// SPDX-License-Identifier: MIT
+
 const assert = require('node:assert/strict');
 require('../voice-vad.js');
 const rate = 16000;

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Maps a parsed Intent to Action(s), using WorldState for context.
 
 Small and rule-based on purpose, mirroring intent.py: swap the intent

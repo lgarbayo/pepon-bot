@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Runtime configuration, read from the environment with defaults sane
 for local development. Deliberately just os.environ — no config
 framework, nothing to install, no file to keep in sync with .env.

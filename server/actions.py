@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Pepon's action layer — the boundary between "what Pepon decided to
 do" and "how that gets carried out".
 

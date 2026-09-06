@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Exercise the HTTP/WS pipeline without loading GPU models or using a mic."""
 import asyncio
 import json

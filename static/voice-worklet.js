@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+//
+// SPDX-License-Identifier: MIT
+
 import './voice-vad.js';
 
 class VoiceProcessor extends AudioWorkletProcessor {

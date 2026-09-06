@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Turns raw phone motion samples into discrete, debounced events.
 
 No ML — just thresholds on accelerationIncludingGravity magnitude

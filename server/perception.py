@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Luis Garbayo <lugarbayo@gmail.com>
+#
+# SPDX-License-Identifier: MIT
+
 """Object detection — wraps whatever model we're using today (YOLOv8n)
 behind a small interface so the rest of the app never touches
 ultralytics/torch directly, and the detector can be swapped later

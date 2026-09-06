@@ -1,0 +1,30 @@
+version = 1
+SPDX-PackageName = "PeponBot"
+SPDX-PackageSupplier = "Luis Garbayo <lugarbayo@gmail.com>"
+SPDX-PackageDownloadLocation = "https://github.com/lgarbayo/pepon-bot"
+
+# Documentation, community health files and project metadata: covered here
+# instead of per-file headers, since Markdown/YAML/TOML front matter would
+# otherwise clutter files meant to be read by humans first.
+[[annotations]]
+path = [
+    "**.md",
+    "REUSE.toml",
+    "requirements.txt",
+    ".gitignore",
+    "data/.gitkeep",
+    ".github/**",
+]
+SPDX-FileCopyrightText = "2026 Luis Garbayo <lugarbayo@gmail.com>"
+SPDX-License-Identifier = "MIT"
+
+# YOLOv8n weights (yolov8n.pt) are auto-downloaded by ultralytics on first
+# run and are gitignored (*.pt) — never committed, so not covered here. See
+# docs/COMPONENTS_LICENSE.md for their license (AGPL-3.0-or-later / Ultralytics
+# Enterprise).
+
+# The DCO is the Linux Foundation's own text, verbatim — not ours to relicense.
+[[annotations]]
+path = "DCO"
+SPDX-FileCopyrightText = "2004, 2006 The Linux Foundation and its contributors."
+SPDX-License-Identifier = "LicenseRef-DCO"
