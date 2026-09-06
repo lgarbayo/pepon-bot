@@ -49,6 +49,25 @@ def test_context_and_new_intents():
         assert not context.history
 
 
+def test_one_off_misdetection_is_never_confirmed():
+    """A single stray frame (e.g. a misdetected "vase") still shows up as
+    a raw, low-confidence sighting — describe() can still answer a direct
+    "did you just see a vase?" — but must never become `confirmed`, which
+    is what GemmaAgent relies on to treat something as grounded fact (see
+    _compact_world_state). It fading from view a frame later must not
+    confirm it either."""
+    world = WorldState()
+    with patch('time.time', return_value=100):
+        world.update_detections([detection('vase')])
+        assert not world.get_object('vase').confirmed
+    with patch('time.time', return_value=100.25):
+        world.update_detections([])
+        assert not world.get_object('vase').confirmed
+    # A real, sustained object still confirms normally (3 frames, >=1s).
+    stable(world, 200, [detection('cup')])
+    assert world.get_object('cup').confirmed
+
+
 def test_scene_debounce_and_stale_camera():
     world = WorldState()
     stable(world, 100, [detection()])

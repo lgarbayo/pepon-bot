@@ -21,13 +21,36 @@ from world_state import WorldState
 
 def _world_with_bottle() -> WorldState:
     ws = WorldState()
-    ws.update_detections([{"class": "bottle", "confidence": 0.91, "x": 0.6, "y": 0.0}])
+    # GemmaAgent only trusts a class once WorldState has confirmed it
+    # across several consecutive frames spanning >=1s (see
+    # WorldState._update_scene / ObjectMemory.confirmed) — mirror that
+    # here instead of a single update_detections() call.
+    detection = [{"class": "bottle", "confidence": 0.91, "x": 0.6, "y": 0.0}]
+    for offset in (0, 0.5, 1.1):
+        with patch("time.time", return_value=1000 + offset):
+            ws.update_detections(detection)
     return ws
 
 
 def _chat_response(content: str) -> httpx.Response:
     request = httpx.Request("POST", "http://localhost:11434/api/chat")
     return httpx.Response(200, json={"message": {"content": content}}, request=request)
+
+
+def test_unconfirmed_single_frame_detection_is_not_grounded():
+    """A one-off misdetection (e.g. a stray "vase") must never appear in
+    what GemmaAgent is told about, whether currently visible or already
+    faded into memory — this is the fix for Gemma citing a "jarrón" that
+    was never actually in the scene."""
+    ws = WorldState()
+    ws.update_detections([{"class": "vase", "confidence": 0.42, "x": 0.1, "y": 0.0}])
+    compact = _compact_world_state(ws)
+    assert compact["visible_objects"] == []
+    assert compact["memory"] == {}
+    assert _known_objects(compact) == set()
+    ws.update_detections([])  # and it fading from view changes nothing
+    compact = _compact_world_state(ws)
+    assert _known_objects(compact) == set()
 
 
 def test_compact_world_state_separates_visible_from_memory():

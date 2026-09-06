@@ -54,6 +54,13 @@ class ObjectMemory:
     y: float = 0.0
     position: str = POSITION_CENTER
     last_seen_at: Optional[float] = None
+    # Set once this class has survived the same stability check as
+    # stable_scene/changes (see _update_scene): a handful of consecutive
+    # frames over >=1s. A single stray YOLO frame (e.g. a misdetected
+    # "vase") sits here as unconfirmed and is kept out of what GemmaAgent
+    # is told about, instead of instantly becoming a fact it can cite for
+    # up to FORGET_AFTER_SECONDS.
+    confirmed: bool = False
 
     def seconds_since_seen(self) -> Optional[float]:
         return None if self.last_seen_at is None else time.time() - self.last_seen_at
@@ -65,6 +72,7 @@ class ObjectMemory:
             "confidence": round(self.confidence, 2),
             "position": self.position,
             "seconds_since_seen": round(seconds, 1) if seconds is not None else None,
+            "confirmed": self.confirmed,
         }
 
 
@@ -106,7 +114,7 @@ class WorldState:
             memory.x = det["x"]
             memory.y = det["y"]
             memory.position = position_from_x(det["x"])
-            memory.last_seen_at = time.time()
+            memory.last_seen_at = now
 
         for cls, memory in self.objects.items():
             if cls not in seen_this_cycle:
@@ -225,6 +233,8 @@ class WorldState:
                 self.stable_scene.pop(cls, None)
             else:
                 self.stable_scene[cls] = value
+                if cls in self.objects:
+                    self.objects[cls].confirmed = True
             if self.scene_ready:
                 kind = 'disappear' if value is None else ('appear' if old is None else 'move')
                 self.changes.append({'object': cls, 'event': kind, 'from': old, 'to': value, 'at': now})

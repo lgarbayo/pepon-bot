@@ -92,6 +92,12 @@ def _compact_world_state(world_state: WorldState) -> dict:
     visible = []
     memory = {}
     for cls, mem in world_state.objects.items():
+        # Skip anything not yet confirmed across several consecutive frames
+        # (see WorldState._update_scene) — a single stray YOLO detection
+        # must never become a "fact" Gemma treats as grounded and repeats
+        # back, especially once it's out of view and only memory is left.
+        if not mem.confirmed:
+            continue
         if mem.visible:
             visible.append({
                 "class": cls,
