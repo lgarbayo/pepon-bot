@@ -1,7 +1,7 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
 Pillow>=10.0  # decode incoming JPEG frames to read width/height for camera stats
-ultralytics>=8.3  # YOLOv8n object detection (pulls torch; auto-downloads weights on first run)
+ultralytics>=8.4.138  # YOLOv8n object detection (pulls torch; auto-downloads weights on first run)
 httpx>=0.27  # GemmaAgent -> local Ollama HTTP API
 faster-whisper>=1.0  # SpeechService -> local STT (local utterance transcription)
 # faster-whisper's CUDA path needs libcublas.so.12/libcudnn specifically (CUDA 12
